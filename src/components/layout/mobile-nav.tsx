@@ -15,6 +15,7 @@ import {
   MoreHorizontal,
   Plus,
   HelpCircle,
+  History,
   Settings,
   Sun,
   Tag,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useApp } from "@/components/shared/user-context";
+import { useFocus } from "@/components/focus/focus-provider";
 import { useQuickAdd } from "@/components/tasks/quick-add";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/server/actions";
@@ -38,11 +40,23 @@ export function MobileNav() {
   const quickAdd = useQuickAdd();
   const { projects, tags } = useApp();
   const [moreOpen, setMoreOpen] = useState(false);
+  // The timer dock sits just above the tab bar, so the add button rides above it while it runs.
+  const { timer } = useFocus();
+
+  const onTab = TABS.some((t) => pathname === t.href || pathname.startsWith(`${t.href}/`));
+  // Anything that lives under "More" (board, projects, settings, ...) lights up the More tab.
+  const moreActive = !onTab && !pathname.startsWith("/notes/");
 
   const tabClass = (active: boolean) =>
     cn(
-      "text-caption flex min-h-14 min-w-0 flex-1 max-[339px]:text-[11px] flex-col items-center justify-center gap-0.5 font-semibold [@media(max-height:500px)]:min-h-12",
-      active ? "text-accent-text" : "text-muted-strong",
+      "group flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-1 text-[11px] leading-none font-semibold transition-colors duration-200 active:scale-95 motion-reduce:transition-none [@media(max-height:500px)]:min-h-12",
+      active ? "text-foreground" : "text-muted-strong",
+    );
+  // The pill behind the icon is what shows the active tab.
+  const pillClass = (active: boolean) =>
+    cn(
+      "inline-flex h-8 w-14 items-center justify-center rounded-full transition-[background-color,color,transform] duration-200 motion-reduce:transition-none",
+      active ? "bg-band text-accent-text" : "group-active:bg-surface-soft",
     );
 
   return (
@@ -52,7 +66,13 @@ export function MobileNav() {
           type="button"
           onClick={quickAdd.open}
           aria-label="Quick add task"
-          className="bg-btn-primary text-btn-primary-fg shadow-float fixed right-4 bottom-20 z-40 inline-flex size-14 items-center justify-center rounded-full md:hidden"
+          className={cn(
+            "bg-btn-primary text-btn-primary-fg shadow-float fixed right-4 z-40 inline-flex size-14 items-center justify-center rounded-full transition-[transform,bottom] duration-200 active:scale-95 md:hidden",
+            // previous (before the timer dock): always "bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
+            timer
+              ? "bottom-[calc(9.5rem+env(safe-area-inset-bottom))]"
+              : "bottom-[calc(5.25rem+env(safe-area-inset-bottom))]",
+          )}
         >
           <Plus className="size-6" aria-hidden />
         </button>
@@ -60,7 +80,7 @@ export function MobileNav() {
 
       <nav
         aria-label="Primary"
-        className="border-border bg-background fixed inset-x-0 bottom-0 z-30 flex border-t pb-[env(safe-area-inset-bottom)] md:hidden print:hidden"
+        className="border-border bg-background/95 fixed inset-x-0 bottom-0 z-30 flex gap-1 border-t px-2 pt-1.5 pb-[max(env(safe-area-inset-bottom),0.375rem)] backdrop-blur-xl md:hidden print:hidden"
       >
         {TABS.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -71,13 +91,26 @@ export function MobileNav() {
               aria-current={active ? "page" : undefined}
               className={tabClass(active)}
             >
-              <Icon className="size-5" aria-hidden />
+              <span className={pillClass(active)}>
+                <Icon className="size-[22px]" strokeWidth={active ? 2.4 : 2} aria-hidden />
+              </span>
               {label}
             </Link>
           );
         })}
-        <button type="button" onClick={() => setMoreOpen(true)} className={tabClass(false)}>
-          <MoreHorizontal className="size-5" aria-hidden />
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          aria-haspopup="dialog"
+          className={tabClass(moreActive)}
+        >
+          <span className={pillClass(moreActive)}>
+            <MoreHorizontal
+              className="size-[22px]"
+              strokeWidth={moreActive ? 2.4 : 2}
+              aria-hidden
+            />
+          </span>
           More
         </button>
       </nav>
@@ -141,6 +174,14 @@ export function MobileNav() {
                   className="text-nav hover:bg-surface-soft flex min-h-11 items-center gap-3 rounded-xl px-3"
                 >
                   <Trash2 className="size-5" aria-hidden /> Trash
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/activity"
+                  className="text-nav hover:bg-surface-soft flex min-h-11 items-center gap-3 rounded-xl px-3"
+                >
+                  <History className="size-5" aria-hidden /> Activity
                 </Link>
               </li>
               <li>

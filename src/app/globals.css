@@ -511,6 +511,12 @@ html {
     opacity: 0;
   }
 }
+@keyframes lp-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+  }
+}
 @keyframes lp-pop {
   from {
     opacity: 0;
@@ -534,6 +540,9 @@ html {
 }
 .lp-pop {
   animation: lp-pop 0.28s ease-out both;
+}
+.lp-pop-out {
+  animation: lp-pop-out 0.24s ease-in both;
 }
 .reveal-hidden {
   opacity: 0;
@@ -576,7 +585,8 @@ html {
   .lp-marquee,
   .lp-blob,
   .lp-caret,
-  .lp-pop {
+  .lp-pop,
+  .lp-pop-out {
     animation: none;
   }
   .reveal-hidden {
@@ -679,5 +689,67 @@ html {
   }
   100% {
     transform: scale(1);
+  }
+}
+
+/* ---------- The focus screen grows out of the timer dock (see lib/focus-morph.ts) ---------- */
+@keyframes focus-expand {
+  from {
+    clip-path: inset(
+      var(--dock-top, 80%) var(--dock-right, 20%) var(--dock-bottom, 3%) var(--dock-left, 20%) round
+        var(--dock-radius, 28px)
+    );
+    background-color: var(--btn-primary-bg); /* matches the dock */
+  }
+  to {
+    clip-path: inset(0 0 0 0 round 0px);
+    background-color: var(--bg);
+  }
+}
+@keyframes focus-collapse {
+  from {
+    clip-path: inset(0 0 0 0 round 0px);
+    background-color: var(--bg);
+  }
+  to {
+    clip-path: inset(
+      var(--dock-top, 80%) var(--dock-right, 20%) var(--dock-bottom, 3%) var(--dock-left, 20%) round
+        var(--dock-radius, 28px)
+    );
+    background-color: var(--btn-primary-bg); /* matches the dock */
+  }
+}
+@keyframes focus-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+}
+@keyframes focus-content-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+.focus-screen[data-state="open"] {
+  animation: focus-expand 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.focus-screen[data-state="closed"] {
+  animation: focus-collapse 0.4s cubic-bezier(0.55, 0, 0.75, 0.2) both;
+}
+.focus-content[data-state="open"] {
+  animation:
+    focus-expand 0.55s cubic-bezier(0.22, 1, 0.36, 1) both,
+    focus-content-in 0.4s ease-out 0.22s both;
+}
+.focus-content[data-state="closed"] {
+  animation:
+    focus-collapse 0.4s cubic-bezier(0.55, 0, 0.75, 0.2) both,
+    focus-content-out 0.16s ease-in both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-screen[data-state],
+  .focus-content[data-state] {
+    animation: none;
   }
 }

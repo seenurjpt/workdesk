@@ -1,3 +1,4 @@
+import { statusList, type CustomStatus } from "@/lib/statuses";
 import type { PriorityValue, ProjectDTO, TaskDTO, TaskStatus } from "@/lib/types";
 
 export type GroupBy = "status" | "project" | "priority";
@@ -15,13 +16,6 @@ export interface Column {
   tasks: TaskDTO[];
 }
 
-const STATUSES: { value: TaskStatus; title: string }[] = [
-  { value: "todo", title: "To do" },
-  { value: "in_progress", title: "In progress" },
-  { value: "blocked", title: "Blocked" },
-  { value: "done", title: "Done" },
-];
-
 const PRIORITIES: { value: PriorityValue; title: string }[] = [
   { value: 1, title: "P1 · Urgent" },
   { value: 2, title: "P2 · High" },
@@ -34,10 +28,16 @@ export const NO_PROJECT = "none";
 const byOrder = (a: TaskDTO, b: TaskDTO) => a.order - b.order || a.id.localeCompare(b.id);
 
 /** Splits tasks into board columns for the chosen grouping. */
-export function buildColumns(tasks: TaskDTO[], group: GroupBy, projects: ProjectDTO[]): Column[] {
+export function buildColumns(
+  tasks: TaskDTO[],
+  group: GroupBy,
+  projects: ProjectDTO[],
+  customStatuses: readonly CustomStatus[] = [],
+  statusOrder: readonly string[] = [],
+): Column[] {
   const sorted = [...tasks].sort(byOrder);
   if (group === "status") {
-    return STATUSES.map((s) => ({
+    return statusList(customStatuses, statusOrder).map((s) => ({
       id: `status:${s.value}`,
       title: s.title,
       key: { kind: "status", value: s.value },

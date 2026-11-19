@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { formatClock, phaseLengthMs } from "@/lib/focus";
 import { invalidateTaskQueries } from "@/hooks/use-task-mutations";
+import { captureDockRect } from "@/lib/focus-morph";
 import { setTaskDoneAction } from "@/server/actions";
 import { useFocus } from "./focus-provider";
 
@@ -27,6 +28,7 @@ export function FocusMode() {
     if (!timer) return;
     const res = await setTaskDoneAction(timer.taskId, true);
     if (!res.ok) return void toast.error(res.error);
+    captureDockRect();
     setModeOpen(false);
     toast.success("Task completed", { description: timer.taskTitle });
     invalidateTaskQueries(qc);
@@ -34,10 +36,19 @@ export function FocusMode() {
   }
 
   return (
-    <DialogPrimitive.Root open={modeOpen} onOpenChange={setModeOpen}>
+    <DialogPrimitive.Root
+      open={modeOpen}
+      onOpenChange={(next) => {
+        // Closing shrinks back into the dock, so note where it is right now.
+        if (!next) captureDockRect();
+        setModeOpen(next);
+      }}
+    >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="bg-background fixed inset-0 z-50" />
-        <DialogPrimitive.Content className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 p-6 text-center focus:outline-none">
+        {/* previous (no animation): <DialogPrimitive.Overlay className="bg-background fixed inset-0 z-50" /> */}
+        <DialogPrimitive.Overlay className="focus-screen bg-background fixed inset-0 z-50" />
+        {/* previous: className="fixed inset-0 z-50 flex flex-col ..." without "focus-content" */}
+        <DialogPrimitive.Content className="focus-content fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 p-6 text-center focus:outline-none">
           <DialogPrimitive.Title className="text-caption text-muted-strong font-semibold tracking-wide uppercase">
             {pomodoro ? (onBreak ? "Break" : "Focus session") : "Stopwatch"}
           </DialogPrimitive.Title>

@@ -5,6 +5,7 @@ import { Project } from "@/models/Project";
 import { Task } from "@/models/Task";
 import { countDueSummary, updateTaskWithNext, type UpdateResult } from "./tasks";
 import { getUserSettings } from "./users";
+import type { UserSettingsDTO } from "@/lib/types";
 
 const DAY_MS = 86_400_000;
 /** How far ahead the scheduler keeps reminders in memory, and how far back "missed" looks. */
@@ -38,7 +39,12 @@ export interface ReminderBundle {
 
 export const refId = (taskId: string, reminderId: string) => `${taskId}:${reminderId}`;
 
-export async function getReminderBundle(userId: string, now = new Date()): Promise<ReminderBundle> {
+export async function getReminderBundle(
+  userId: string,
+  now = new Date(),
+  /** Pass the already-loaded user to skip another read. */
+  preloaded?: UserSettingsDTO,
+): Promise<ReminderBundle> {
   await connectDb();
   const from = new Date(now.getTime() - LOOKBACK_MS);
   const to = new Date(now.getTime() + LOOKAHEAD_MS);
@@ -53,7 +59,7 @@ export async function getReminderBundle(userId: string, now = new Date()): Promi
       .select("title dueAt allDay projectId reminders")
       .limit(MAX_ITEMS)
       .lean(),
-    getUserSettings(userId),
+    preloaded ?? getUserSettings(userId),
   ]);
 
   const projectIds = [

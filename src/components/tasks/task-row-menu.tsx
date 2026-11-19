@@ -43,7 +43,7 @@ export function TaskRowMenu({
             <DropdownMenu.Item onSelect={() => void stop()} className={ITEM}>
               Stop timer
             </DropdownMenu.Item>
-          ) : (
+          ) : timer ? null : ( // one timer at a time: another task's timer is running, so no start items
             <>
               <DropdownMenu.Item onSelect={() => void start(ref, "stopwatch")} className={ITEM}>
                 Start stopwatch

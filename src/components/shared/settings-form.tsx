@@ -8,6 +8,7 @@ import {
   Clock,
   Database,
   Download,
+  ListChecks,
   LogOut,
   Palette,
   User,
@@ -21,6 +22,7 @@ import { Select } from "@/components/ui/select";
 import { ElasticSlider } from "@/components/ui/elastic-slider";
 import { useThemeChoice } from "@/components/shared/theme-toggle";
 import { InstallApp } from "@/components/shared/install-app";
+import { StatusManager } from "@/components/statuses/status-manager";
 import { useReminders } from "@/components/reminders/reminder-provider";
 import type { ReminderPrefs } from "@/lib/reminders";
 import { TONES, playTone, type Tone } from "@/lib/sound";
@@ -358,6 +360,15 @@ export function SettingsForm({ user, timezones }: { user: UserSettingsDTO; timez
               </Button>
             ))}
           </div>
+        </SettingsCard>
+
+        <SettingsCard
+          id="statuses"
+          icon={ListChecks}
+          title="Task statuses"
+          description="The columns on your Board. Keep the four built-in ones and add your own."
+        >
+          <StatusManager />
         </SettingsCard>
 
         <SettingsCard

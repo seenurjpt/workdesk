@@ -33,12 +33,51 @@ test.describe("landing page", () => {
     await page.goto("/");
     await page
       .getByRole("navigation", { name: "Sections" })
-      .getByRole("link", { name: "Features" })
+      .getByRole("link", { name: "Features", exact: true })
       .click();
     await expect(page.locator("#features")).toBeInViewport();
     await expect(
-      page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Features" }),
+      page
+        .getByRole("navigation", { name: "Sections" })
+        .getByRole("link", { name: "Features", exact: true }),
     ).toHaveAttribute("aria-current", "location");
+  });
+
+  test("the public Features page lists everything, and the landing page links to it", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("link", { name: "All features" })
+      .click();
+    await expect(page).toHaveURL(/\/features$/);
+    await expect(page).toHaveTitle(/All features/);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Everything WorkDesk does");
+    for (const id of [
+      "capture",
+      "tasks",
+      "views",
+      "notes",
+      "focus",
+      "speed",
+      "everywhere",
+      "data",
+      "quick-add",
+      "shortcuts",
+      "good-to-know",
+    ]) {
+      await expect(page.locator(`#${id}`)).toBeAttached();
+    }
+    await expect(page.getByRole("heading", { name: "Recurring tasks" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Reminders need WorkDesk open" })).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("link", { name: "Shortcuts" })
+      .click();
+    await expect(page.locator("#shortcuts")).toBeInViewport();
+    await page.getByRole("link", { name: "Create your account" }).first().click();
+    await expect(page).toHaveURL(/\/register$/);
   });
 
   test("the try-it box parses what you type", async ({ page }) => {

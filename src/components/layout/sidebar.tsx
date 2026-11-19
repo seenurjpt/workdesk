@@ -28,6 +28,7 @@ import {
   FileText,
   GripVertical,
   HelpCircle,
+  History,
   Hourglass,
   Inbox,
   LayoutTemplate,
@@ -453,6 +454,11 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         <li>
           <NavLink href="/trash" icon={Trash2} collapsed={collapsed}>
             Trash
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/activity" icon={History} collapsed={collapsed}>
+            Activity
           </NavLink>
         </li>
         <li>

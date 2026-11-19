@@ -16,6 +16,7 @@ import { WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import { invalidateTaskQueries } from "@/hooks/use-task-mutations";
 import { useLocalStorageString } from "@/hooks/use-local-storage";
+import { cn } from "@/lib/utils";
 import {
   QUEUE_KEY,
   enqueue,
@@ -86,6 +87,45 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
   const [recovered, setRecovered] = useState(false);
   const online = browserOnline && !unreachable;
 
+  // The explanation at the bottom shows briefly when the connection drops, then gets out of the
+  // way: the "Offline" pill in the top bar stays as the lasting indicator.
+  const [notice, setNotice] = useState(false);
+  const [noticeLeaving, setNoticeLeaving] = useState(false);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const exitTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  /** Plays the exit animation, then removes the notice. */
+  const hideNotice = useCallback(() => {
+    clearTimeout(noticeTimer.current);
+    setNoticeLeaving(true);
+    clearTimeout(exitTimer.current);
+    exitTimer.current = setTimeout(() => {
+      setNotice(false);
+      setNoticeLeaving(false);
+    }, 260);
+  }, []);
+  const showNotice = useCallback(() => {
+    clearTimeout(exitTimer.current);
+    setNoticeLeaving(false);
+    setNotice(true);
+    clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(hideNotice, 3000);
+  }, [hideNotice]);
+  useEffect(() => {
+    window.addEventListener("offline", showNotice);
+    window.addEventListener("online", hideNotice);
+    // opened while already offline (from the saved pages)
+    const t = setTimeout(() => {
+      if (!navigator.onLine) showNotice();
+    }, 0);
+    return () => {
+      window.removeEventListener("offline", showNotice);
+      window.removeEventListener("online", hideNotice);
+      clearTimeout(t);
+      clearTimeout(noticeTimer.current);
+      clearTimeout(exitTimer.current);
+    };
+  }, [showNotice, hideNotice]);
+
   const markRecovered = useCallback(() => {
     setRecovered(true);
     setTimeout(() => setRecovered(false), 3500);
@@ -121,14 +161,18 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
   const pending = useMemo(() => parseQueue(raw || null).length, [raw]);
   const flushing = useRef(false);
 
-  const queue = useCallback((op: NewOfflineOp) => {
-    const next = enqueue(loadQueue(window.localStorage), op, new Date(), crypto.randomUUID());
-    saveQueue(window.localStorage, next);
-    // let useLocalStorageString subscribers re-read
-    window.dispatchEvent(new StorageEvent("storage", { key: QUEUE_KEY }));
-    // Something just failed to reach the server, so treat the connection as down until a probe works.
-    setUnreachable(true);
-  }, []);
+  const queue = useCallback(
+    (op: NewOfflineOp) => {
+      const next = enqueue(loadQueue(window.localStorage), op, new Date(), crypto.randomUUID());
+      saveQueue(window.localStorage, next);
+      // let useLocalStorageString subscribers re-read
+      window.dispatchEvent(new StorageEvent("storage", { key: QUEUE_KEY }));
+      // Something just failed to reach the server, so treat the connection as down until a probe works.
+      setUnreachable(true);
+      showNotice();
+    },
+    [showNotice],
+  );
 
   const flush = useCallback(async () => {
     if (flushing.current) return;
@@ -165,10 +209,13 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
   return (
     <OfflineContext.Provider value={value}>
       {children}
-      {!online && (
+      {notice && (
         <div
-          role="status"
-          className="border-border bg-surface shadow-float fixed inset-x-0 bottom-16 z-40 mx-auto flex w-fit max-w-[92vw] items-center gap-2 rounded-full border px-4 py-2 md:bottom-4 print:hidden"
+          // Never in the way: it ignores taps and clicks, and goes by itself after a moment.
+          className={cn(
+            noticeLeaving ? "lp-pop-out" : "lp-pop",
+            "border-border bg-surface shadow-float pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex w-fit max-w-[92vw] items-center gap-2 rounded-full border px-4 py-2 md:bottom-4 print:hidden",
+          )}
         >
           <WifiOff className="size-4 shrink-0" aria-hidden />
           <span className="text-body-sm">

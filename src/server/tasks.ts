@@ -1,4 +1,5 @@
 import { Types } from "mongoose";
+import { assertStatus } from "./statuses";
 import { connectDb } from "@/lib/db";
 import { formatInTimeZone } from "date-fns-tz";
 import { dayRange } from "@/lib/dates";
@@ -120,17 +121,22 @@ export async function countTabs(
 ): Promise<TabCounts> {
   await connectDb();
   const today = dayRange(now, timezone, 0);
-  const [allCount, todayCount, upcoming, overdue] = await Promise.all([
-    Task.countDocuments(viewFilter(userId, { kind: "all" }, timezone, now)),
-    Task.countDocuments({
-      ...base(userId),
-      status: { $ne: "done" as const },
-      dueAt: { $gte: today.start, $lt: today.end },
-    }),
-    Task.countDocuments(viewFilter(userId, { kind: "upcoming" }, timezone, now)),
-    Task.countDocuments(viewFilter(userId, { kind: "overdue" }, timezone, now)),
+  // One round trip instead of four. Each facet reuses the same filter the lists use, so a tab's
+  // count and its list can never disagree.
+  const count = (match: Record<string, unknown>) => [{ $match: match }, { $count: "n" }];
+  const [row] = await Task.aggregate<Record<keyof TabCounts, { n: number }[]>>([
+    { $match: viewFilter(userId, { kind: "all" }, timezone, now) },
+    {
+      $facet: {
+        all: [{ $count: "n" }],
+        today: count({ dueAt: { $gte: today.start, $lt: today.end } }),
+        upcoming: count(viewFilter(userId, { kind: "upcoming" }, timezone, now)),
+        overdue: count(viewFilter(userId, { kind: "overdue" }, timezone, now)),
+      },
+    },
   ]);
-  return { all: allCount, today: todayCount, upcoming, overdue };
+  const n = (k: keyof TabCounts) => row?.[k]?.[0]?.n ?? 0;
+  return { all: n("all"), today: n("today"), upcoming: n("upcoming"), overdue: n("overdue") };
 }
 
 export async function listCompletedToday(userId: string, timezone: string, now = new Date()) {
@@ -203,6 +209,7 @@ export async function createTask(
 ): Promise<TaskDTO> {
   await connectDb();
   if (input.projectId) await assertOwnsProject(userId, input.projectId);
+  if (input.status) await assertStatus(userId, input.status);
   if (input.recurrence && !input.dueAt) throw new Error(NEEDS_DATE);
   const ctx = input.dueAt || input.reminders ? await loadCtx(userId) : null;
   const allDay = input.allDay ?? false;
@@ -388,6 +395,7 @@ export async function updateTaskWithNext(
   const existing = await findLean(userId, id);
   if (!existing) return null;
   if (patch.projectId) await assertOwnsProject(userId, patch.projectId);
+  if (patch.status) await assertStatus(userId, patch.status);
 
   const dueChanged = patch.dueAt !== undefined || patch.allDay !== undefined;
   const dueAfter = patch.dueAt !== undefined ? patch.dueAt : (existing.dueAt ?? null);

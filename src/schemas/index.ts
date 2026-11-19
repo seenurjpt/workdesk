@@ -61,7 +61,7 @@ export const taskInputSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   description: tiptapDoc.nullable().optional(),
   projectId: objectId.nullable().optional(),
-  status: z.enum(["todo", "in_progress", "blocked", "done"]).optional(),
+  status: z.string().min(1).max(40).optional(),
   priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
   dueAt: z.coerce.date().nullable().optional(),
   allDay: z.boolean().optional(),
@@ -87,7 +87,7 @@ export const quickAddSchema = z.object({
 const columnSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("status"),
-    value: z.enum(["todo", "in_progress", "blocked", "done"]),
+    value: z.string().min(1).max(40),
   }),
   z.object({ kind: z.literal("project"), value: objectId.nullable() }),
   z.object({

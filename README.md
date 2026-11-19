@@ -110,6 +110,7 @@ Most to-do apps and note apps live apart. In an office day they are the same thi
 - **Export**: everything as JSON, tasks as CSV, each note as Markdown.
 - **Trash** with restore and automatic purge after 30 days.
 - **Responsive** down to 280 px wide, with a bottom tab bar on phones. Motion respects `prefers-reduced-motion`.
+- A public **Features** page (`/features`, no sign-in needed) that lists every feature, the quick-add syntax, all shortcuts and the limits, linked from the landing page.
 - A built-in **Help and guide** page (`/help`) documents the commands and shortcuts.
 
 ## Quick add syntax
@@ -191,6 +192,17 @@ npm run dev                    # http://localhost:3000
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | No          | Google sign-in appears only when both are set                                                                                                               |
 
 With Atlas, add your IP address under **Network Access** so the app can connect.
+
+### Admin panel
+
+Administrators sign in on their own page, `/admin/login`, and get an **Admin** link in the sidebar (`/admin`): overview, user management (add,
+suspend, promote, reset password, delete), an audit log, and a switch to close sign-ups. Admins only
+see counts, never anyone's tasks or notes. Make the first admin with either:
+
+```bash
+npm run make-admin -- you@example.com     # add --revoke to undo
+# or set ADMIN_EMAILS=you@example.com in .env (those emails are admins when they sign in or register)
+```
 
 ### Using a local MongoDB
 

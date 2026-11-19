@@ -108,6 +108,9 @@ export function toUserDTO(u: {
   _id: Types.ObjectId;
   name: string;
   email: string;
+  role?: string | null;
+  customStatuses?: { key: string; name: string }[] | null;
+  statusOrder?: string[] | null;
   timezone?: string | null;
   theme?: string | null;
   weekStartsOn?: number | null;
@@ -123,6 +126,9 @@ export function toUserDTO(u: {
     id: String(u._id),
     name: u.name,
     email: u.email,
+    role: u.role === "admin" ? "admin" : "user",
+    customStatuses: (u.customStatuses ?? []).map((s) => ({ key: s.key, name: s.name })),
+    statusOrder: [...(u.statusOrder ?? [])],
     timezone: u.timezone ?? "Asia/Kolkata",
     theme: (u.theme as UserSettingsDTO["theme"]) ?? "system",
     weekStartsOn: u.weekStartsOn === 0 ? 0 : 1,

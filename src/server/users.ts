@@ -4,13 +4,16 @@ import { User } from "@/models/User";
 import type { RegisterInput, SettingsInput } from "@/schemas";
 import type { UserSettingsDTO } from "@/lib/types";
 import { toUserDTO } from "./serialize";
+import { adminEmailsFromEnv } from "./settings";
 
 export async function registerUser(input: RegisterInput): Promise<{ id: string }> {
   await connectDb();
   const existing = await User.exists({ email: input.email });
   if (existing) throw new Error("An account with this email already exists");
   const passwordHash = await bcrypt.hash(input.password, 12);
-  const user = await User.create({ name: input.name, email: input.email, passwordHash });
+  // Listed in ADMIN_EMAILS: the account is an administrator from the start.
+  const role = adminEmailsFromEnv().includes(input.email) ? "admin" : "user";
+  const user = await User.create({ name: input.name, email: input.email, passwordHash, role });
   return { id: String(user._id) };
 }
 

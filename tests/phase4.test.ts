@@ -34,6 +34,7 @@ import {
 import {
   createTemplate,
   deleteTemplate,
+  SYSTEM_TEMPLATES,
   ensureSystemTemplates,
   listTemplates,
   saveNoteAsTemplate,
@@ -275,20 +276,19 @@ describe("trash", () => {
 });
 
 describe("templates", () => {
-  it("seeds the three starter templates exactly once", async () => {
+  it("seeds the starter templates exactly once", async () => {
     const first = await listTemplates(alice);
-    expect(first.map((t) => t.name).sort()).toEqual([
-      "Client kickoff",
-      "Meeting notes",
-      "Release checklist",
-    ]);
+    expect(first.map((t) => t.name).sort()).toEqual(SYSTEM_TEMPLATES.map((t) => t.name).sort());
+    expect(first.map((t) => t.name)).toEqual(
+      expect.arrayContaining(["Client kickoff", "Meeting notes", "Release checklist"]),
+    );
     expect(first.every((t) => t.system)).toBe(true);
     await Promise.all([
       ensureSystemTemplates(alice),
       ensureSystemTemplates(alice),
       listTemplates(alice),
     ]);
-    expect(await Template.countDocuments({ userId: alice })).toBe(3);
+    expect(await Template.countDocuments({ userId: alice })).toBe(SYSTEM_TEMPLATES.length);
     // deleting one does not bring it back
     const release = first.find((t) => t.name === "Release checklist")!;
     await deleteTemplate(alice, release.id);
@@ -673,7 +673,7 @@ describe("export", () => {
     expect(data.tasks.map((t) => t.title)).toEqual(["t"]);
     expect(data.projects).toHaveLength(1);
     expect(data.notes).toHaveLength(1);
-    expect(data.templates).toHaveLength(3);
+    expect(data.templates).toHaveLength(SYSTEM_TEMPLATES.length);
     expect(json).not.toContain("bobs");
     expect(data.exportedAt).toBe(NOW.toISOString());
   });

@@ -3,7 +3,7 @@ import { connectDb } from "@/lib/db";
 import { POMODORO_WORK_MIN } from "@/lib/focus";
 import type { ActiveTimerDTO } from "@/lib/types";
 import { Task } from "@/models/Task";
-import { User } from "@/models/User";
+import { User, type UserDoc } from "@/models/User";
 
 const MIN_COUNTED_MS = 30_000;
 /** A forgotten timer must not log absurd hours. */
@@ -37,9 +37,13 @@ async function recordEntry(
   return minutes;
 }
 
-export async function getActiveTimer(userId: string): Promise<ActiveTimerDTO | null> {
+export async function getActiveTimer(
+  userId: string,
+  /** The already-loaded user record, to skip another read. */
+  preloaded?: { activeTimer?: UserDoc["activeTimer"] } | null,
+): Promise<ActiveTimerDTO | null> {
   await connectDb();
-  const user = await User.findById(userId).select("activeTimer").lean();
+  const user = preloaded ?? (await User.findById(userId).select("activeTimer").lean());
   const t = user?.activeTimer;
   if (!t?.taskId || !t.mode || !t.phaseStartedAt || !t.startedAt) return null;
   const task = await Task.findOne({ _id: t.taskId, userId: uid(userId), deletedAt: null })

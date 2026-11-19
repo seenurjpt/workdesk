@@ -141,6 +141,11 @@ export async function purgeExpired(userId: string, now = new Date()): Promise<nu
  * No cron: expired items are removed opportunistically while the person is using the app,
  * at most once every few hours. Returns how many were removed.
  */
+/** True when the last tidy-up was long enough ago to run another. */
+export function purgeDue(lastPurgeAt: Date | null | undefined, now = new Date()): boolean {
+  return !lastPurgeAt || now.getTime() - lastPurgeAt.getTime() >= PURGE_CHECK_MS;
+}
+
 export async function maybePurgeExpired(userId: string, now = new Date()): Promise<number> {
   await connectDb();
   const user = await User.findById(userId).select("lastPurgeAt").lean();

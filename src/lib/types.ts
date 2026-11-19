@@ -1,8 +1,10 @@
 import type { ReminderPrefs } from "@/lib/reminders";
+import type { CustomStatus } from "@/lib/statuses";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-export type TaskStatus = "todo" | "in_progress" | "blocked" | "done";
+/** A built-in status or the key of one of the person's own (see lib/statuses.ts). */
+export type TaskStatus = string;
 export type PriorityValue = 1 | 2 | 3 | 4;
 
 export interface SubtaskDTO {
@@ -67,6 +69,9 @@ export interface UserSettingsDTO {
   weekStartsOn: 0 | 1;
   workHours: { start: string; end: string };
   reminderPrefs: ReminderPrefs;
+  role: "user" | "admin";
+  customStatuses: CustomStatus[];
+  statusOrder: string[];
 }
 
 export interface NoteDTO {

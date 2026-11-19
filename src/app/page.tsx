@@ -225,6 +225,19 @@ export default async function LandingPage() {
             <div className="mt-12">
               <Bento />
             </div>
+            <Reveal>
+              <div className="border-border bg-surface mt-8 flex flex-wrap items-center justify-between gap-4 rounded-3xl border p-6">
+                <p className="font-heading max-w-xl text-xl font-bold">
+                  That is the short version. Every feature, shortcut and limit is written down on
+                  one page, no sign-up needed.
+                </p>
+                <Button asChild variant="primary">
+                  <Link href="/features">
+                    See every feature <ArrowRight className="size-4" aria-hidden />
+                  </Link>
+                </Button>
+              </div>
+            </Reveal>
           </div>
         </section>
 
@@ -367,7 +380,10 @@ export default async function LandingPage() {
           <span className="text-caption text-muted-strong flex items-center gap-1.5">
             <Keyboard className="size-4" aria-hidden /> Press ? inside the app for shortcuts
           </span>
-          <nav aria-label="Account" className="text-nav ml-auto flex gap-5">
+          <nav aria-label="Account" className="text-nav ml-auto flex flex-wrap gap-5">
+            <Link href="/features" className="hover:underline">
+              All features
+            </Link>
             <Link href="/login" className="hover:underline">
               Sign in
             </Link>

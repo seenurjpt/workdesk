@@ -95,6 +95,11 @@ export function FocusProvider({
 
   const start = useCallback(
     async (task: { id: string; title: string }, mode: "stopwatch" | "pomodoro") => {
+      // One timer at a time. The buttons are hidden while one runs; this stops any other way in.
+      if (timer && timer.taskId !== task.id) {
+        toast("A timer is already running", { description: "Stop it before starting another." });
+        return;
+      }
       const now = new Date().toISOString();
       setTimer({
         taskId: task.id,
@@ -116,7 +121,7 @@ export function FocusProvider({
       );
       settle();
     },
-    [initial, settle],
+    [initial, settle, timer],
   );
 
   const stop = useCallback(async () => {

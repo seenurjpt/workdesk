@@ -31,6 +31,7 @@ import { useThemeChoice } from "@/components/shared/theme-toggle";
 import { useTaskEditor } from "@/components/tasks/task-editor-context";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useTaskMutations } from "@/hooks/use-task-mutations";
+import { statusList, statusName, type CustomStatus } from "@/lib/statuses";
 import type { PriorityValue, SnippetPart, TaskDTO, TaskStatus } from "@/lib/types";
 import {
   createMeetingNoteAction,
@@ -125,12 +126,6 @@ const GROUP_CLASS =
 const ITEM_CLASS =
   "flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 data-[selected=true]:bg-surface-soft";
 
-const STATUSES: { value: TaskStatus; label: string }[] = [
-  { value: "todo", label: "To do" },
-  { value: "in_progress", label: "In progress" },
-  { value: "blocked", label: "Blocked" },
-  { value: "done", label: "Done" },
-];
 const PRIORITIES: { value: PriorityValue; label: string }[] = [
   { value: 1, label: "P1 · Urgent" },
   { value: 2, label: "P2 · High" },
@@ -213,6 +208,13 @@ export function GlobalSearchHost() {
       },
       { id: "go-templates", label: "Go to Templates", group: "Go to", run: go("/templates") },
       { id: "go-trash", label: "Go to Trash", group: "Go to", run: go("/trash") },
+      {
+        id: "go-activity",
+        label: "Go to Activity",
+        group: "Go to",
+        keywords: "history log",
+        run: go("/activity"),
+      },
       {
         id: "go-settings",
         label: "Go to Settings",
@@ -353,7 +355,7 @@ export function GlobalSearchHost() {
 
   async function setStatus(t: TaskDTO, status: TaskStatus) {
     update.mutate({ id: t.id, patch: { status } });
-    toast.success(`Status: ${STATUSES.find((s) => s.value === status)?.label}`, {
+    toast.success(`Status: ${statusName(status, user.customStatuses, user.statusOrder)}`, {
       description: t.title,
     });
     close();
@@ -445,9 +447,16 @@ export function GlobalSearchHost() {
                   });
                   close();
                 }}
+                customStatuses={user.customStatuses}
+                statusOrder={user.statusOrder}
                 onStatus={(s) => void setStatus(task, s)}
                 onPriority={(p) => setPriority(task, p)}
                 onTomorrow={() => void tomorrow(task)}
+                timerTaskId={timer?.taskId ?? null}
+                onStopTimer={() => {
+                  close();
+                  void stop();
+                }}
                 onTimer={(mode) => {
                   close();
                   void start({ id: task.id, title: task.title }, mode);
@@ -575,10 +584,14 @@ function TaskActions({
   onBack,
   onOpen,
   onDone,
+  customStatuses,
+  statusOrder,
   onStatus,
   onPriority,
   onTomorrow,
   onTimer,
+  timerTaskId,
+  onStopTimer,
   onDelete,
 }: {
   task: TaskDTO;
@@ -586,10 +599,15 @@ function TaskActions({
   onBack: () => void;
   onOpen: () => void;
   onDone: () => void;
+  customStatuses: CustomStatus[];
+  statusOrder: string[];
   onStatus: (s: TaskStatus) => void;
   onPriority: (p: PriorityValue) => void;
   onTomorrow: () => void;
   onTimer: (mode: "stopwatch" | "pomodoro") => void;
+  /** The task the running timer belongs to, if any. */
+  timerTaskId: string | null;
+  onStopTimer: () => void;
   onDelete: () => void;
 }) {
   const q = query.trim().toLowerCase();
@@ -602,12 +620,14 @@ function TaskActions({
       group: "Task",
       run: onDone,
     },
-    ...STATUSES.filter((s) => s.value !== task.status && s.value !== "done").map((s) => ({
-      id: `status-${s.value}`,
-      label: `Set status: ${s.label}`,
-      group: "Status",
-      run: () => onStatus(s.value),
-    })),
+    ...statusList(customStatuses, statusOrder)
+      .filter((s) => s.value !== task.status && s.value !== "done")
+      .map((s) => ({
+        id: `status-${s.value}`,
+        label: `Set status: ${s.title}`,
+        group: "Status",
+        run: () => onStatus(s.value),
+      })),
     ...PRIORITIES.filter((p) => p.value !== task.priority).map((p) => ({
       id: `prio-${p.value}`,
       label: `Set priority: ${p.label}`,
@@ -615,13 +635,25 @@ function TaskActions({
       run: () => onPriority(p.value),
     })),
     { id: "tomorrow", label: "Move to tomorrow", group: "Schedule", run: onTomorrow },
-    { id: "stopwatch", label: "Start stopwatch", group: "Timer", run: () => onTimer("stopwatch") },
-    {
-      id: "pomodoro",
-      label: "Start Pomodoro (25 / 5)",
-      group: "Timer",
-      run: () => onTimer("pomodoro"),
-    },
+    // One timer at a time: start options only when nothing is running; on the running task, offer Stop.
+    ...(timerTaskId === task.id
+      ? [{ id: "stop-timer", label: "Stop timer", group: "Timer", run: onStopTimer }]
+      : timerTaskId
+        ? []
+        : [
+            {
+              id: "stopwatch",
+              label: "Start stopwatch",
+              group: "Timer",
+              run: () => onTimer("stopwatch"),
+            },
+            {
+              id: "pomodoro",
+              label: "Start Pomodoro (25 / 5)",
+              group: "Timer",
+              run: () => onTimer("pomodoro"),
+            },
+          ]),
     { id: "delete", label: "Delete task", group: "Danger", run: onDelete },
   ].filter((i) => show(i.label));
   const groups = [...new Set(items.map((i) => i.group))];

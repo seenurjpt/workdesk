@@ -15,11 +15,9 @@ const taskSchema = new Schema(
     projectId: { type: Schema.Types.ObjectId, ref: "Project" },
     title: { type: String, required: true, trim: true, maxlength: 200 },
     description: { type: Schema.Types.Mixed },
-    status: {
-      type: String,
-      enum: ["todo", "in_progress", "blocked", "done"],
-      default: "todo",
-    },
+    // "todo" | "in_progress" | "blocked" | "done", or the key of one of the person's own statuses.
+    // Checked against the account in the service layer (assertStatus), not here.
+    status: { type: String, default: "todo", maxlength: 40 },
     priority: { type: Number, enum: [1, 2, 3, 4], default: 4 },
     dueAt: Date,
     startAt: Date,
@@ -79,6 +77,10 @@ taskSchema.index({ userId: 1, "reminders.at": 1 });
 taskSchema.index({ title: "text" });
 
 export type TaskDoc = InferSchemaType<typeof taskSchema> & { _id: mongoose.Types.ObjectId };
+
+// In development a hot reload keeps the old compiled model, so a new field in the schema would be
+// silently dropped on save until the server restarts. Rebuild the model when not in production.
+if (process.env.NODE_ENV === "development" && mongoose.models.Task) mongoose.deleteModel("Task");
 
 export const Task: Model<TaskDoc> =
   (mongoose.models.Task as Model<TaskDoc>) ?? mongoose.model<TaskDoc>("Task", taskSchema);

@@ -14,21 +14,21 @@ import { FocusMode } from "@/components/focus/focus-mode";
 import { FocusProvider } from "@/components/focus/focus-provider";
 import { getReminderBundle } from "@/server/reminders";
 import { getActiveTimer } from "@/server/timer";
-import { maybePurgeExpired } from "@/server/trash";
-import { listProjects } from "@/server/projects";
-import { requireUser } from "@/server/session";
-import { countGeneralTasks, listTagCounts } from "@/server/tasks";
+import { after } from "next/server";
+import { getSidebarData } from "@/server/sidebar";
+import { loadUserDoc, requireUser } from "@/server/session";
+import { maybePurgeExpired, purgeDue } from "@/server/trash";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
-  // No cron: tidy the trash opportunistically, at most every few hours.
-  await maybePurgeExpired(user.id);
-  const [projects, tags, reminders, generalCount, activeTimer] = await Promise.all([
-    listProjects(user.id),
-    listTagCounts(user.id),
-    getReminderBundle(user.id),
-    countGeneralTasks(user.id),
-    getActiveTimer(user.id),
+  const doc = await loadUserDoc(user.id); // already read by requireUser, so this costs nothing
+  // No cron: tidy the trash opportunistically, at most every few hours, after the page is sent so
+  // it never delays the response.
+  if (purgeDue(doc?.lastPurgeAt)) after(() => maybePurgeExpired(user.id));
+  const [{ projects, tags, generalCount }, reminders, activeTimer] = await Promise.all([
+    getSidebarData(user.id),
+    getReminderBundle(user.id, new Date(), user),
+    getActiveTimer(user.id, doc),
   ]);
 
   return (

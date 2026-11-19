@@ -26,7 +26,11 @@ let code = 1;
 try {
   if ((await run("npx", ["next", "build"])) !== 0) throw new Error("build failed");
   // Its own process group, so the whole tree (npx and next) can be stopped at the end.
-  server = spawn("npx", ["next", "start", "-p", String(PORT)], { env, stdio: "ignore", detached: true });
+  server = spawn("npx", ["next", "start", "-p", String(PORT)], {
+    env,
+    stdio: "ignore",
+    detached: true,
+  });
   for (let i = 0; i < 60; i++) {
     try {
       if ((await fetch(`http://localhost:${PORT}/login`)).ok) break;

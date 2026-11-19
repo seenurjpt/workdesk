@@ -7,17 +7,28 @@ import { PublicThemeToggle } from "@/components/shared/public-theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const LINKS = [
-  { id: "features", label: "Features" },
-  { id: "how", label: "How it works" },
-  { id: "keyboard", label: "Keyboard" },
-] as const;
+export interface NavItem {
+  label: string;
+  /** "#section" for a place on this page, or a route such as "/features". */
+  href: string;
+  /** The element id to highlight while that section is in view (for "#section" links). */
+  id?: string;
+  /** Marks the link to the page you are on. */
+  current?: boolean;
+}
+
+const HOME_LINKS: NavItem[] = [
+  { id: "features", href: "#features", label: "Features" },
+  { id: "how", href: "#how", label: "How it works" },
+  { id: "keyboard", href: "#keyboard", label: "Keyboard" },
+  { href: "/features", label: "All features" },
+];
 
 const DOCK_AT = 48;
 const UNDOCK_AT = 16;
 
 /** A full-width bar at the top of the page that becomes a floating dock once you scroll. */
-export function LandingNav() {
+export function LandingNav({ links = HOME_LINKS }: { links?: NavItem[] }) {
   const [docked, setDocked] = useState(false);
   const [active, setActive] = useState<string | null>(null);
 
@@ -54,12 +65,13 @@ export function LandingNav() {
       },
       { rootMargin: "-30% 0px -50% 0px", threshold: [0, 0.25, 0.5, 1] },
     );
-    for (const { id } of LINKS) {
+    for (const { id } of links) {
+      if (!id) continue;
       const el = document.getElementById(id);
       if (el) io.observe(el);
     }
     return () => io.disconnect();
-  }, []);
+  }, [links]);
 
   return (
     // Zero height: the bar floats over the page instead of taking up space above the hero, so
@@ -76,7 +88,7 @@ export function LandingNav() {
           className={cn(
             "mx-auto w-full backdrop-blur-xl transition-[max-width,border-radius,background-color,box-shadow,border-color] duration-300 ease-out motion-reduce:transition-none",
             docked
-              ? "border-border bg-surface/80 shadow-float max-w-[780px] rounded-full border"
+              ? "border-border bg-surface/80 shadow-float max-w-[900px] rounded-full border"
               : "border-border bg-background/85 border-b-border max-w-full rounded-none border-b border-transparent",
           )}
         >
@@ -87,22 +99,40 @@ export function LandingNav() {
             )}
           >
             <Logo href="/" compactOnSmall />
-            <nav aria-label="Sections" className="ml-4 hidden items-center gap-1 md:flex">
-              {LINKS.map(({ id, label }) => (
-                <a
-                  key={id}
-                  href={`#${id}`}
-                  aria-current={active === id ? "location" : undefined}
-                  className={cn(
-                    "text-nav rounded-full px-3 py-1.5 transition-colors duration-150",
-                    active === id
-                      ? "bg-band text-foreground"
-                      : "text-muted-strong hover:text-foreground hover:bg-surface-soft",
-                  )}
-                >
-                  {label}
-                </a>
-              ))}
+            <nav
+              aria-label="Sections"
+              className="ml-2 hidden min-w-0 items-center gap-0.5 whitespace-nowrap md:flex lg:ml-4 lg:gap-1"
+            >
+              {links.map(({ id, href, label, current }) => {
+                const on = current || (id !== undefined && active === id);
+                const className = cn(
+                  // whitespace-nowrap: a label must never wrap onto two lines inside the dock
+                  "text-nav shrink-0 rounded-full px-2.5 py-1.5 whitespace-nowrap transition-colors duration-150 lg:px-3",
+                  on
+                    ? "bg-band text-foreground"
+                    : "text-muted-strong hover:text-foreground hover:bg-surface-soft",
+                );
+                // A route goes through Next's Link, a "#section" is a plain in-page anchor.
+                return href.startsWith("/") ? (
+                  <Link
+                    key={href}
+                    href={href}
+                    aria-current={current ? "page" : undefined}
+                    className={className}
+                  >
+                    {label}
+                  </Link>
+                ) : (
+                  <a
+                    key={href}
+                    href={href}
+                    aria-current={on ? "location" : undefined}
+                    className={className}
+                  >
+                    {label}
+                  </a>
+                );
+              })}
             </nav>
             <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
               <PublicThemeToggle
@@ -113,7 +143,8 @@ export function LandingNav() {
                 asChild
                 variant="utility"
                 size="sm"
-                className="rounded-full max-[359px]:hidden"
+                // hidden on tablets (md to lg) where the dock has no spare room: Sign in is in the hero and footer too
+                className="rounded-full max-[359px]:hidden md:max-lg:hidden"
               >
                 <Link href="/login">Sign in</Link>
               </Button>

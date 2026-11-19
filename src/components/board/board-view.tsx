@@ -7,7 +7,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   closestCorners,
   getFirstCollision,
@@ -30,10 +31,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { AlertCircle, Bell, Calendar, MoreVertical, Repeat } from "lucide-react";
+import { AlertCircle, Bell, Calendar, MoreVertical, Repeat, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useApp } from "@/components/shared/user-context";
+import { StatusManager } from "@/components/statuses/status-manager";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { PriorityBadge } from "@/components/tasks/task-row";
 import { useTaskEditor } from "@/components/tasks/task-editor-context";
 import { BOARD_KEY, invalidateTaskQueries } from "@/hooks/use-task-mutations";
@@ -147,7 +150,7 @@ function Card({ task, columns, columnId, index, count, showProject, onMoveTo }: 
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "group border-border bg-surface hover:border-muted-strong focus-visible:outline-focus has-[.card-edit:focus-visible]:outline-focus relative rounded-2xl border p-4 transition-[border-color,box-shadow] duration-150 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 has-[.card-edit:focus-visible]:outline-2 has-[.card-edit:focus-visible]:outline-offset-2",
+        "group border-border bg-surface hover:border-muted-strong focus-visible:outline-focus has-[.card-edit:focus-visible]:outline-focus relative rounded-2xl border p-4 transition-[border-color,box-shadow] duration-150 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 has-[.card-edit:focus-visible]:outline-2 has-[.card-edit:focus-visible]:outline-offset-2 pointer-coarse:select-none pointer-coarse:[-webkit-touch-callout:none]",
         isDragging && "opacity-40",
       )}
       {...attributes}
@@ -231,7 +234,10 @@ function ColumnView({
     <section
       aria-labelledby={`col-${column.id}`}
       className={cn(
-        "bg-surface-soft flex w-72 shrink-0 snap-start flex-col rounded-3xl p-3",
+        // Columns share the width, so four fit side by side; with more (grouping by project, say)
+        // each keeps a readable minimum and the row scrolls sideways. A column is as tall as its
+        // cards: no scrolling inside it, the page scrolls instead.
+        "bg-surface-soft flex min-h-72 min-w-[16rem] flex-1 basis-0 snap-start flex-col rounded-3xl p-3",
         isOver && "ring-accent ring-2 ring-inset",
       )}
     >
@@ -297,7 +303,12 @@ export function BoardView({ initial, group }: { initial: TaskDTO[]; group: Group
     },
   });
 
-  const columns = useMemo(() => buildColumns(tasks, group, projects), [tasks, group, projects]);
+  const customStatuses = user.customStatuses;
+  const statusOrder = user.statusOrder;
+  const columns = useMemo(
+    () => buildColumns(tasks, group, projects, customStatuses, statusOrder),
+    [tasks, group, projects, customStatuses, statusOrder],
+  );
   const tasksById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
   const baseItems = useMemo(
     () =>
@@ -313,7 +324,10 @@ export function BoardView({ initial, group }: { initial: TaskDTO[]; group: Group
   const items = dragItems ?? baseItems;
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    // Mouse: drag after moving a few pixels. Touch: press and hold for a moment, then drag, so a
+    // normal swipe still scrolls the page and the columns.
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -370,6 +384,8 @@ export function BoardView({ initial, group }: { initial: TaskDTO[]; group: Group
   }
 
   function onDragStart(e: DragStartEvent) {
+    // a small buzz on phones that support it, so the pick-up is felt
+    if (e.activatorEvent.type.startsWith("touch")) navigator.vibrate?.(12);
     setActiveId(String(e.active.id));
     setDragItems(baseItems);
   }
@@ -464,6 +480,25 @@ export function BoardView({ initial, group }: { initial: TaskDTO[]; group: Group
             {g.label}
           </button>
         ))}
+        {group === "status" && (
+          <Dialog>
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="text-nav border-border hover:border-muted-strong hover:bg-surface-soft ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-full border border-dashed px-4 transition-colors duration-150"
+              >
+                <Settings2 className="size-4" aria-hidden /> Manage statuses
+              </button>
+            </DialogTrigger>
+            <DialogContent
+              title="Manage statuses"
+              description="Add your own columns and drag them into the order you want. They sit between Blocked and Done."
+              className="max-w-lg"
+            >
+              <StatusManager />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {empty ? (
@@ -480,6 +515,9 @@ export function BoardView({ initial, group }: { initial: TaskDTO[]; group: Group
         <DndContext
           id="board-dnd"
           sensors={sensors}
+          // Sliding the board while you hold a card near its edge. The default is fast enough to
+          // cross a whole phone-sized board in under half a second, so it is slowed down here.
+          autoScroll={{ acceleration: 2.5, interval: 8, threshold: { x: 0.18, y: 0.18 } }}
           collisionDetection={collision}
           onDragStart={onDragStart}
           onDragOver={onDragOver}

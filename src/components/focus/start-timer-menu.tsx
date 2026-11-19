@@ -31,6 +31,9 @@ export function StartTimerMenu({
       </Button>
     );
   }
+  // One timer at a time: while another task's timer is running, no start option is offered here.
+  // (PREVIOUS: the play button was always shown on every task.)
+  if (timer) return null;
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
