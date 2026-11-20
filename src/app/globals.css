@@ -753,3 +753,160 @@ html {
     animation: none;
   }
 }
+
+/* Replaced by the canvas orb in src/components/voice/voice-visuals.tsx:
+@keyframes voice-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.voice-bar {
+  animation: voice-bar 0.9s ease-in-out infinite;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-bar {
+    animation: none;
+    transform: scaleY(0.6);
+  }
+}
+*/
+
+/* Voice assistant panel: a slowly turning gradient border with a soft halo outside and a glow on
+   the inner edge. `--voice-level` (0–1, set from JS) makes both brighter while you talk; the
+   spin speeds up while the assistant is thinking. */
+@property --voice-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.voice-glow {
+  --voice-level: 0;
+  --voice-speed: 7s;
+  --voice-gradient: conic-gradient(
+    from var(--voice-angle),
+    var(--accent),
+    var(--info),
+    #a78bfa,
+    var(--accent-text),
+    var(--accent)
+  );
+  /* No position here: the panel is `fixed` (a Tailwind class), which already anchors the glow
+     layers. Setting it in this unlayered rule would override that and drop the panel into the page. */
+  isolation: isolate;
+  border-radius: 1.5rem;
+  padding: 1.5px;
+}
+.voice-glow::before,
+.voice-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--voice-gradient);
+  animation: voice-spin var(--voice-speed) linear infinite;
+}
+/* The halo: a blurred copy of the border behind the panel. */
+.voice-glow::after {
+  inset: -3px;
+  filter: blur(calc(12px + var(--voice-level) * 16px));
+  opacity: calc(0.3 + var(--voice-level) * 0.55);
+  transition: opacity 0.3s ease;
+}
+.voice-glow-inner {
+  position: relative;
+  border-radius: calc(1.5rem - 1.5px);
+  /* The inline classes give a plain bordered card if this stylesheet is ever missing. */
+  border-color: transparent;
+  /* (A mint wash behind the orb was tried and removed to keep the panel minimal.) */
+  background: var(--surface);
+  box-shadow:
+    inset 0 0 calc(16px + var(--voice-level) * 26px) calc(-6px + var(--voice-level) * 4px)
+      color-mix(in srgb, var(--accent) calc(28% + var(--voice-level) * 45%), transparent),
+    var(--shadow-float);
+}
+.voice-glow[data-state="listening"] {
+  --voice-speed: 4s;
+}
+.voice-glow[data-state="thinking"] {
+  --voice-speed: 1.4s;
+}
+.voice-glow[data-state="speaking"] {
+  --voice-speed: 3s;
+}
+.voice-glow[data-state="idle"]::after {
+  opacity: 0.22;
+}
+/* Anchor the glow layers when the panel isn't positioned by a class already. */
+.voice-glow:not(.fixed, .absolute, .sticky) {
+  position: relative;
+}
+/* The panel zooms in from just below its final size and zooms back out when it closes.
+   (Previously: animate-[pop-in_0.18s_cubic-bezier(0.16,1,0.3,1)], a 4px slide with a 0.96 scale.) */
+.voice-zoom {
+  /* Grows from the middle of the screen on phones and from the bottom-right corner on desktop. */
+  transform-origin: 50% 50%;
+  animation: voice-zoom-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.voice-zoom[data-closing] {
+  animation: voice-zoom-out 0.2s cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+@media (min-width: 768px) {
+  .voice-zoom {
+    transform-origin: 100% 100%;
+  }
+}
+@keyframes voice-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.78);
+  }
+}
+@keyframes voice-zoom-out {
+  to {
+    opacity: 0;
+    transform: scale(0.78);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-zoom {
+    animation: none;
+  }
+  .voice-zoom[data-closing] {
+    animation: none;
+    opacity: 0;
+  }
+}
+@keyframes voice-spin {
+  to {
+    --voice-angle: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-glow::before,
+  .voice-glow::after {
+    animation: none;
+  }
+}
+
+/* Soft fade-and-rise for text that changes in the voice panel. */
+.voice-fade {
+  animation: voice-fade-in 0.28s ease-out both;
+}
+@keyframes voice-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-fade {
+    animation: none;
+  }
+}

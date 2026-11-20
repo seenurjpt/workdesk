@@ -3,18 +3,32 @@
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import Link from "next/link";
-import { Bell, BellOff, Check, Clock } from "lucide-react";
+import { Bell, BellOff, Check, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/components/shared/user-context";
 import { formatDue } from "@/lib/format";
 import { formatInTimeZone } from "date-fns-tz";
-import type { ReminderItem } from "@/server/reminders";
+import type { ReminderAction, ReminderItem } from "@/server/reminders";
 import { useReminders } from "./reminder-provider";
 
 function Row({ item }: { item: ReminderItem }) {
   const { user } = useApp();
   const { act, openTask } = useReminders();
   const due = item.dueAt ? formatDue(item.dueAt, item.allDay, user.timezone) : null;
+  // Which button is waiting for the server. While one is, every button in the row is disabled, so
+  // the same reminder cannot be actioned twice.
+  const [busy, setBusy] = useState<ReminderAction | null>(null);
+  async function run(action: ReminderAction) {
+    if (busy) return;
+    setBusy(action);
+    try {
+      await act(item, action);
+    } finally {
+      setBusy(null);
+    }
+  }
+  const spin = (action: ReminderAction, icon: React.ReactNode) =>
+    busy === action ? <Loader2 className="size-4 animate-spin" aria-hidden /> : icon;
   const when = item.sentAt ? formatInTimeZone(new Date(item.sentAt), user.timezone, "h:mm a") : "";
   return (
     <li className="border-border border-b px-4 py-3 last:border-b-0">
@@ -30,21 +44,41 @@ function Row({ item }: { item: ReminderItem }) {
           {due?.overdue && " (overdue)"}
         </span>
       </button>
-      <div className="mt-2 flex flex-wrap gap-1">
-        <Button size="sm" onClick={() => void act(item, "done")}>
-          <Check className="size-4" aria-hidden /> Done
+      <div className="mt-2 flex flex-wrap gap-1" aria-busy={busy !== null}>
+        <Button size="sm" disabled={busy !== null} onClick={() => void run("done")}>
+          {spin("done", <Check className="size-4" aria-hidden />)} Done
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => void act(item, "snooze10")}>
-          <Clock className="size-4" aria-hidden /> 10 min
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy !== null}
+          onClick={() => void run("snooze10")}
+        >
+          {spin("snooze10", <Clock className="size-4" aria-hidden />)} 10 min
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => void act(item, "snooze60")}>
-          1 hr
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy !== null}
+          onClick={() => void run("snooze60")}
+        >
+          {busy === "snooze60" && <Loader2 className="size-4 animate-spin" aria-hidden />} 1 hr
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => void act(item, "tomorrow")}>
-          Tomorrow
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy !== null}
+          onClick={() => void run("tomorrow")}
+        >
+          {busy === "tomorrow" && <Loader2 className="size-4 animate-spin" aria-hidden />} Tomorrow
         </Button>
-        <Button size="sm" variant="utility" onClick={() => void act(item, "dismiss")}>
-          Clear
+        <Button
+          size="sm"
+          variant="utility"
+          disabled={busy !== null}
+          onClick={() => void run("dismiss")}
+        >
+          {busy === "dismiss" && <Loader2 className="size-4 animate-spin" aria-hidden />} Clear
         </Button>
       </div>
     </li>

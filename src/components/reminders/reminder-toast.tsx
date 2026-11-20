@@ -1,6 +1,7 @@
 "use client";
 
-import { Bell, X } from "lucide-react";
+import { useState } from "react";
+import { Bell, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ReminderAction, ReminderItem } from "@/server/reminders";
 
@@ -9,13 +10,31 @@ export interface ToastProps {
   body: string;
   /** Present for single reminders, so the toast can offer actions. */
   item?: ReminderItem;
-  onAction: (item: ReminderItem, action: ReminderAction) => void;
+  /** Resolves to whether it worked. The card closes only when it did. */
+  onAction: (
+    item: ReminderItem,
+    action: ReminderAction,
+  ) => void | boolean | Promise<boolean | void>;
   onOpen: (item: ReminderItem) => void;
   onClose: () => void;
 }
 
 /** In-app reminder card: used when the tab is open, or when native notifications are off. */
 export function ReminderToast({ title, body, item, onAction, onOpen, onClose }: ToastProps) {
+  // The card stays until the server answers, with a spinner on the button that was pressed and the
+  // others disabled, so one reminder cannot be actioned twice. It closes only on success.
+  const [busy, setBusy] = useState<ReminderAction | null>(null);
+  const spinner = <Loader2 className="size-4 animate-spin" aria-hidden />;
+  async function run(target: ReminderItem, action: ReminderAction) {
+    if (busy) return;
+    setBusy(action);
+    try {
+      const ok = await onAction(target, action);
+      if (ok !== false) onClose();
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
     <div
       role="alert"
@@ -32,39 +51,30 @@ export function ReminderToast({ title, body, item, onAction, onOpen, onClose }: 
         </Button>
       </div>
       {item && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            onClick={() => {
-              onAction(item, "done");
-              onClose();
-            }}
-          >
-            Done
+        <div className="mt-3 flex flex-wrap gap-2" aria-busy={busy !== null}>
+          <Button size="sm" disabled={busy !== null} onClick={() => void run(item, "done")}>
+            {busy === "done" && spinner} Done
           </Button>
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => {
-              onAction(item, "snooze10");
-              onClose();
-            }}
+            disabled={busy !== null}
+            onClick={() => void run(item, "snooze10")}
           >
-            Snooze 10 min
+            {busy === "snooze10" && spinner} Snooze 10 min
           </Button>
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => {
-              onAction(item, "snooze60");
-              onClose();
-            }}
+            disabled={busy !== null}
+            onClick={() => void run(item, "snooze60")}
           >
-            1 hr
+            {busy === "snooze60" && spinner} 1 hr
           </Button>
           <Button
             size="sm"
             variant="utility"
+            disabled={busy !== null}
             onClick={() => {
               onOpen(item);
               onClose();

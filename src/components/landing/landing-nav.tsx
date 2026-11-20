@@ -28,7 +28,14 @@ const DOCK_AT = 48;
 const UNDOCK_AT = 16;
 
 /** A full-width bar at the top of the page that becomes a floating dock once you scroll. */
-export function LandingNav({ links = HOME_LINKS }: { links?: NavItem[] }) {
+export function LandingNav({
+  links = HOME_LINKS,
+  overlay = false,
+}: {
+  links?: NavItem[];
+  /** Sits transparently inside the hero card at the top of the page (home), instead of a full-width bar. */
+  overlay?: boolean;
+}) {
   const [docked, setDocked] = useState(false);
   const [active, setActive] = useState<string | null>(null);
 
@@ -80,16 +87,18 @@ export function LandingNav({ links = HOME_LINKS }: { links?: NavItem[] }) {
       <div
         className={cn(
           "transition-[padding] duration-300 motion-reduce:transition-none",
-          docked ? "px-3 pt-3" : "px-0 pt-0",
+          docked ? "px-3 pt-3" : overlay ? "px-3 pt-3 md:px-6 md:pt-4" : "px-0 pt-0",
         )}
       >
         <div
           data-docked={docked}
           className={cn(
-            "mx-auto w-full backdrop-blur-xl transition-[max-width,border-radius,background-color,box-shadow,border-color] duration-300 ease-out motion-reduce:transition-none",
+            "mx-auto w-full transition-[max-width,border-radius,background-color,box-shadow,border-color] duration-300 ease-out motion-reduce:transition-none",
             docked
-              ? "border-border bg-surface/80 shadow-float max-w-[900px] rounded-full border"
-              : "border-border bg-background/85 border-b-border max-w-full rounded-none border-b border-transparent",
+              ? "border-border bg-surface/80 shadow-float max-w-[900px] rounded-full border backdrop-blur-xl"
+              : overlay
+                ? "max-w-full border-transparent bg-transparent"
+                : "border-border bg-background/85 border-b-border max-w-full rounded-none border-b border-transparent backdrop-blur-xl",
           )}
         >
           <div

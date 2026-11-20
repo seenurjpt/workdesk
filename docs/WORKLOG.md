@@ -8,19 +8,129 @@ How entries are written: a short **summary**, then the **details** (what changed
 
 ---
 
+## Fri 20 Nov 2026
+
+### Summary (for an EOD update)
+
+- **Reminder buttons** (bell list and in-app reminder card): pressing Done, 10 min, 1 hr, Tomorrow or
+  Clear now shows a spinner on that button and disables the rest of the row until the server
+  answers, so one reminder cannot be actioned twice. The in-app card closes only if it worked.
+- **Voice input for tasks**: a mic button in quick add (topbar, Q dialog, mobile "+"), the `V`
+  shortcut and an "Add task by voice" palette command. Speech fills the field live and is never
+  saved until Enter. Spoken phrases like "high priority", "4 p.m.", "remind me 15 minutes
+  before", "hashtag clientA" and "waiting on Rahul" are turned into quick-add syntax.
+- **Voice assistant** (rule based, no AI): topbar sound-wave button, `M` shortcut or "Voice
+  assistant" in the palette. Say "open notes", "add a task call Priya tomorrow 5 pm", "remind me to
+  …", "mark call Priya as done", "search for invoice", "new note called …", "dark mode", "stop the
+  timer". It shows what it heard, does it, and answers out loud (mute button remembered).
+
+### Details
+
+1. Files: `src/components/reminders/notification-bell.tsx`, `reminder-toast.tsx`,
+   `reminder-provider.tsx` (`act` now reports success). tsc and eslint clean; not run in a browser.
+2. Voice input uses the browser's Web Speech API (no server or DB changes). The mic button is hidden
+   where unsupported (Firefox, and Brave, which blocks the speech service). It stops after a pause or 30 s, and errors (mic blocked, no speech,
+   offline) show a toast. In Chrome the audio goes to Google's speech service. Files:
+   `src/hooks/use-speech-input.ts`, `src/lib/voice-input.ts`, `src/components/tasks/quick-add.tsx`,
+   `global-search.tsx`, `src/lib/shortcuts.ts`; tests `tests/voice-input.test.ts` (5). Not tried with
+   a real microphone yet.
+3. Voice accuracy pass (free, browser speech only): asks the engine for 5 guesses per phrase and picks
+   the one naming the user's projects/tags; keeps listening through short pauses (stops after ~2 s
+   of silence; Android keeps the engine's own stop because continuous mode repeats words there);
+   understands spoken times ("four thirty pm", "10 30", "half past four", "quarter to five", "at
+   four" → 4pm), parts of day ("tomorrow morning" → 9am, "tonight" → 8pm, "end of the day" → 5pm),
+   "for/in project <name>" with one-letter typo tolerance for existing projects, "tagged <tag>".
+   Quick-add preview now matches projects like the server does ("#clientA" = "Client A"). Brave is
+   treated as unsupported (it blocks the speech service). Tests: `tests/voice-input.test.ts` (10).
+4. Voice assistant: `src/lib/voice-commands.ts` (pure intent parser: navigate incl. the user's projects
+   and tags, addTask, complete, newNote/newMeeting, search, theme, stopTimer, help, cancel; never
+   guesses), `src/components/voice/voice-assistant.tsx` (provider + floating panel, spoken replies
+   via speechSynthesis, example chips you can tap, auto-close after success). The palette's query
+   moved into `GlobalSearchProvider` so "search for X" opens it pre-filled. "Mark X as done" uses
+   global search and completes the first open match (toast has Undo). `useSpeechInput.start()` now
+   replaces a running round, so dev Strict Mode double-mounting doesn't kill auto-listening.
+   Tests: `tests/voice-commands.test.ts` (26). Not tried with a real microphone.
+5. Brave and Firefox voice support: on-device Whisper (`onnx-community/whisper-base.en`, 8-bit, ~77 MB,
+   downloaded once from Hugging Face after the user agrees, cached by the browser; audio never leaves
+   the device). `public/speech-worker.js` (transformers.js 3.7.6 from jsDelivr),
+   `src/lib/local-speech.ts` (worker client, mic recording with silence detection, 16 kHz
+   resampling), `useSpeechInput` picks "native" (Chrome/Edge/Safari) or "local" (Brave/Firefox),
+   `src/components/voice/speech-notice.tsx` (consent, download progress, transcribing). CSP now
+   allows jsDelivr + Hugging Face (connect/script), 'wasm-unsafe-eval' and blob: workers (old policy
+   kept as a comment in `next.config.ts`). Checked in headless Chromium under the same CSP: JFK
+   sample transcribed word-perfect; model load ~25–40 s first time; warm transcription of a 3 s
+   clip ~10 s single-threaded on this machine (tiny.en: ~3 s but misheard). Multi-threading
+   (COOP/COEP credentialless + blob: scripts) halved it to ~5 s; not enabled (app-wide headers).
+   Safari uses its built-in recognition (needs Siri/Dictation enabled); not tested on a Mac.
+6. Own voice visuals (no library): `src/components/voice/voice-visuals.tsx` with a canvas `VoiceOrb`
+   (mint blob from --accent/--accent-text with glow; idle breathes, listening follows the mic,
+   thinking shows a travelling arc, speaking pulses while replies are read out, error turns red;
+   follows theme changes, still under reduced motion) and `LiveWaveform` (scrolling level bars in
+   the quick-add preview while listening). `src/hooks/use-mic-level.ts` measures mic loudness with
+   its own stream (skipped on Android, where it would break Chrome's speech service; visuals fall
+   back to synthetic motion). Old CSS bars kept commented in globals.css. Screenshots checked in
+   light and dark from a scratch build.
+7. On-device speech was too slow (~10 s "Transcribing…" in Brave). Switched Whisper base.en → Moonshine
+   base (`onnx-community/moonshine-base-ONNX`, 8-bit, 63 MB): Whisper always processes a 30 s
+   window, Moonshine only what was said. Headless benchmark, warm, 3 s command: Whisper 4.3 s →
+   Moonshine 0.45 s (11 s speech: 5.2 s → 1.7 s), same words. Worker now runs a warm-up after
+   loading, caps output tokens by audio length, and the app preloads the cached model 4 s after
+   opening once the user has agreed to the download.
+8. Assistant panel glow: rotating conic-gradient border (mint → blue → violet → deep green), blurred
+   halo behind it and an inner-edge glow (`.voice-glow` / `.voice-glow-inner` in globals.css,
+   `@property --voice-angle`). `--voice-level`, set every frame from the mic level, brightens it as
+   you talk; spin is 7 s idle, 4 s listening, 3 s speaking, 1.4 s thinking. Static under reduced
+   motion. Old frame classes kept as a comment in `voice-assistant.tsx`. Screenshots checked in light
+   and dark.
+   Fix: `.voice-glow { position: relative }` (unlayered CSS) beat Tailwind's `fixed`, so the panel
+   fell to the bottom of the page. Position now comes from the classes; non-fixed uses get
+   `position: relative` via `:not(.fixed, .absolute, .sticky)`. The inner card also carries its own
+   bg/border/radius classes as a fallback. Turbopack dev stopped reloading `globals.css` (seen on
+   :3000 and a scratch dev server); restart dev, `rm -rf .next` if needed.
+9. The assistant panel now closes when you click or tap anywhere outside it (Esc and the X still work).
+   The top-bar voice button and toasts are excluded (`data-voice-trigger` / sonner toast), so the
+   button still toggles instead of closing and reopening. Not tried in a browser.
+10. The assistant panel zooms in (0.78 → 1, 0.3 s, fading in) and zooms out on every close (outside
+    click, Esc, X, auto-close after an action). `VoiceAssistantHost` keeps it mounted for 200 ms
+    after closing (`data-closing`), ignores late microphone results meanwhile, and gives each opening
+    a fresh panel. `.voice-zoom` in globals.css; reduced motion = no zoom. Measured on a scratch
+    build: width 380 → 448 px opening, 447 → 349 px closing.
+11. Assistant panel redesigned, then simplified to a minimal layout and moved: bottom-right on desktop
+    (md and up), centred on the screen on phones (zoom origin follows). Contents: a 64 px orb that is
+    the only button (tap to finish speaking / speak again), one line of live text or result, one muted
+    caption, tiny mute + close icons, and up to 5 example chips only when a command wasn't understood
+    or on "what can you do". No header, status chip, rotating hints, big buttons or footer; the
+    mint wash was dropped, the glowing border kept. `useSpeechInput` gained `cancel()` (stop without
+    callbacks; fixes a false "Didn't catch that" toast when tapping an example while the on-device
+    engine was listening, and stops the mic as soon as the panel starts closing). Checked with a
+    scripted fake speech engine on a scratch build, light/dark and a 390 px phone.
+
+### Open items
+
+- See the open items under Thu 19 Nov (e2e not rerun, passwords to change, scratch servers).
+
+---
+
 ## Thu 19 Nov 2026
 
 ### Summary (for an EOD update)
 
-Latest: an **admin panel** at `/admin` (overview, users, audit log, settings) for managing accounts, with sign-up on/off and suspension.
+A big feature day on top of mobile polish.
 
-Earlier in the day: toasts moved to the top right on desktop, only one timer can run at a time, and a public **Features** page (`/features`) was added and linked from the landing page.
+- **Admin panel** (`/admin`, own sign-in page `/admin/login`, own shell with no app navigation):
+  overview, user management (add, suspend, promote, reset password, delete), audit log, and a switch
+  to close sign-ups. Admins see counts only, never anyone's tasks or notes.
+- **Per-user Activity log** (`/activity`): what you did in the last 7 days, in plain words.
+- **Custom task statuses**: add up to 6 of your own, rename, remove, and drag any status (except
+  Done) into the order you want; the Board follows.
+- **19 starter templates** (16 new), added to existing accounts without bringing back deleted ones.
+- **Faster pages**: roughly half the database queries per page load.
+- **Mobile and polish**: new bottom navigation, touch dragging on the board, toasts moved off the
+  middle of the screen, the running timer as a floating dock (light in dark mode) that grows into the
+  full-screen focus view, one timer at a time, a short animated offline message, and a public
+  **Features** page linked from the landing page. Demo data was loaded into the real Atlas database.
 
-Mobile and polish day. The mobile bottom navigation was redesigned, board cards can now be dragged
-with a finger, toasts no longer cover the middle of a phone screen, and the running timer became a
-floating dock at the bottom centre that opens the full-screen focus view with an animation. The
-offline message was shortened and now animates out. Demo data was loaded into the real Atlas
-database.
+Unit suite: 290 tests pass. The browser (e2e) suite was not rerun today.
 
 ### Details
 
@@ -180,9 +290,15 @@ database.
 
 ### Open items
 
-- The browser end-to-end suite has **not been rerun** since the touch drag, toast, timer dock and
-  focus-morph changes (testing was paused on request). The board drag test may need a small
-  adjustment.
+- The browser end-to-end suite has **not been rerun** since the touch drag, toast, timer dock,
+  focus-morph, admin, activity, status and template changes (testing was paused on request). There
+  are no e2e tests for the admin panel yet; the board drag test may need a small adjustment.
+- **Security housekeeping:** the admin account `admin@workdesk.app` in the real database has a
+  password that appeared in chat, so change it; the demo account (`demo@workdesk.app`) has a published
+  password and is not an admin; delete it before real users sign up.
+- The query savings were measured by counting queries on a local database, not timed against Atlas.
+- Scratch test servers (ports 3100 to 3118) and a scratch database (27018) were left running because
+  stopping them was blocked; they do not touch your dev server or data.
 - One Settings test ("dropdowns work by keyboard...") fails about one full run in four: an arrow key
   is sometimes lost. Undecided whether it is test timing or a real keyboard issue in the dropdown.
 - The dock, toast and focus-morph changes were seen on desktop and one phone size; real devices have

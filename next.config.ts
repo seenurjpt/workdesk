@@ -2,14 +2,22 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// On-device voice input (Brave, Firefox) runs Whisper in `public/speech-worker.js`: the library
+// (and its WebAssembly runtime) comes from jsDelivr, the model files from Hugging Face. Only
+// downloads; audio never leaves the device.
+const SPEECH_LIB = "https://cdn.jsdelivr.net";
+const SPEECH_MODEL = "https://huggingface.co https://*.huggingface.co https://*.hf.co";
+
+// Previous policy, before on-device voice input:
+// "script-src 'self' 'unsafe-inline'" (+ 'unsafe-eval' in dev), "connect-src 'self'", "worker-src 'self'"
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' ${SPEECH_LIB}${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self'",
-  "worker-src 'self'",
+  `connect-src 'self' ${SPEECH_LIB} ${SPEECH_MODEL}`,
+  "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

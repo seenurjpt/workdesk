@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useFocus } from "@/components/focus/focus-provider";
 import { useQuickAdd } from "@/components/tasks/quick-add";
+import { useVoiceAssistant } from "@/components/voice/voice-assistant";
 import { useShortcutHelp } from "@/components/shared/keyboard-shortcuts";
 import { useThemeChoice } from "@/components/shared/theme-toggle";
 import { useTaskEditor } from "@/components/tasks/task-editor-context";
@@ -49,8 +50,12 @@ import { isTypingTarget } from "@/lib/typing-target";
 
 interface GlobalSearchContextValue {
   open: () => void;
+  /** Opens the palette with `query` already typed (used by the voice assistant). */
+  openWith: (query: string) => void;
   isOpen: boolean;
   setOpen: (open: boolean) => void;
+  query: string;
+  setQuery: (query: string) => void;
 }
 const GlobalSearchContext = createContext<GlobalSearchContextValue | null>(null);
 
@@ -73,7 +78,12 @@ function downloadFile(href: string) {
 /** Holds the open state and the shortcuts (Ctrl/Cmd+K, `/`). The dialog itself is `GlobalSearchHost`. */
 export function GlobalSearchProvider({ children }: { children: ReactNode }) {
   const [isOpen, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const open = useCallback(() => setOpen(true), []);
+  const openWith = useCallback((q: string) => {
+    setQuery(q);
+    setOpen(true);
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -91,7 +101,7 @@ export function GlobalSearchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <GlobalSearchContext.Provider value={{ open, isOpen, setOpen }}>
+    <GlobalSearchContext.Provider value={{ open, openWith, isOpen, setOpen, query, setQuery }}>
       {children}
     </GlobalSearchContext.Provider>
   );
@@ -135,17 +145,17 @@ const PRIORITIES: { value: PriorityValue; label: string }[] = [
 
 export function GlobalSearchHost() {
   const router = useRouter();
-  const { isOpen, setOpen } = useGlobalSearch();
+  const { isOpen, setOpen, query, setQuery } = useGlobalSearch();
   const { user } = useApp();
   const { open: openTask } = useTaskEditor();
   const quickAdd = useQuickAdd();
+  const voice = useVoiceAssistant();
   const { openHelp } = useShortcutHelp();
   const { choose } = useThemeChoice();
   const { timer, start, stop } = useFocus();
   const { update } = useTaskMutations();
   const fx = useTrashFx();
 
-  const [query, setQuery] = useState("");
   const [task, setTask] = useState<TaskDTO | null>(null); // the task whose actions are shown
   const debounced = useDebounced(query.trim(), 120);
 
@@ -153,7 +163,7 @@ export function GlobalSearchHost() {
     setOpen(false);
     setQuery("");
     setTask(null);
-  }, [setOpen]);
+  }, [setOpen, setQuery]);
 
   const go = useCallback(
     (path: string) => () => {
@@ -230,6 +240,26 @@ export function GlobalSearchHost() {
         run: () => {
           close();
           setTimeout(quickAdd.open, 0);
+        },
+      },
+      {
+        id: "voice-assistant",
+        label: "Voice assistant",
+        group: "Create",
+        keywords: "speak talk command microphone mic agent",
+        run: () => {
+          close();
+          setTimeout(voice.open, 0);
+        },
+      },
+      {
+        id: "new-task-voice",
+        label: "Add task by voice",
+        group: "Create",
+        keywords: "speak dictate microphone mic speech",
+        run: () => {
+          close();
+          setTimeout(quickAdd.openVoice, 0);
         },
       },
       {
@@ -311,7 +341,18 @@ export function GlobalSearchHost() {
         run: async () => (close(), await stop()),
       });
     return list;
-  }, [go, close, quickAdd.open, router, choose, openHelp, timer, stop]);
+  }, [
+    go,
+    close,
+    quickAdd.open,
+    quickAdd.openVoice,
+    voice.open,
+    router,
+    choose,
+    openHelp,
+    timer,
+    stop,
+  ]);
 
   // Commands filter on every keystroke; only the server search waits for the debounce.
   const q = query.trim().toLowerCase();

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { LogOut, PanelLeft, Plus, Search, Settings } from "lucide-react";
+import { AudioLines, LogOut, PanelLeft, Plus, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo } from "./logo";
 import { useGlobalSearch } from "@/components/shared/global-search";
@@ -11,12 +11,16 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { useApp } from "@/components/shared/user-context";
 import { ConnectionStatus } from "@/components/layout/connection-status";
 import { QuickAddInput, useQuickAdd } from "@/components/tasks/quick-add";
+import { useVoiceAssistant } from "@/components/voice/voice-assistant";
+import { useSpeechSupported } from "@/hooks/use-speech-input";
 import { logoutAction } from "@/server/actions";
 
 export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { user } = useApp();
   const quickAdd = useQuickAdd();
   const globalSearch = useGlobalSearch();
+  const voice = useVoiceAssistant();
+  const voiceSupported = useSpeechSupported();
 
   return (
     <header className="border-border bg-background sticky top-0 z-30 flex h-16 items-center gap-3 border-b px-4 pb-px print:hidden">
@@ -65,6 +69,19 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           <Plus className="size-4" aria-hidden />
           <span className="max-[359px]:sr-only">Add</span>
         </Button>
+        {voiceSupported && (
+          <Button
+            variant="utility"
+            size="icon"
+            aria-label="Voice assistant (M)"
+            data-voice-trigger=""
+            title="Voice assistant (M): say “open notes” or “add a task…”"
+            aria-pressed={voice.isOpen}
+            onClick={voice.isOpen ? voice.close : voice.open}
+          >
+            <AudioLines className="size-5" aria-hidden />
+          </Button>
+        )}
         <ConnectionStatus />
         <NotificationBell />
         <ThemeToggle />

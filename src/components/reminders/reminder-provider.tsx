@@ -36,7 +36,8 @@ interface ReminderContextValue {
   permission: Permission;
   markSeen: () => void;
   requestPermission: () => Promise<Permission>;
-  act: (item: ReminderItem, action: ReminderAction) => Promise<void>;
+  /** Resolves to whether the server accepted the action. */
+  act: (item: ReminderItem, action: ReminderAction) => Promise<boolean>;
   openTask: (taskId: string) => Promise<void>;
   sendTest: () => Promise<void>;
 }
@@ -158,7 +159,10 @@ export function ReminderProvider({
       reminderId: item.reminderId,
       action,
     });
-    if (!res.ok) return void toast.error(res.error);
+    if (!res.ok) {
+      toast.error(res.error);
+      return false;
+    }
     setRecent((r) => r.filter((i) => i.id !== item.id));
     setPending((p) => p.filter((i) => i.id !== item.id));
     if (action === "done" && res.data?.next?.dueAt) {
@@ -170,6 +174,7 @@ export function ReminderProvider({
     }
     invalidateTaskQueries(qc);
     router.refresh();
+    return true;
   });
 
   const inApp = useEvent(
@@ -180,7 +185,7 @@ export function ReminderProvider({
             title={title}
             body={body}
             item={item}
-            onAction={(i, a) => void act(i, a)}
+            onAction={(i, a) => act(i, a)}
             onOpen={(i) => void openTask(i.taskId)}
             onClose={() => toast.dismiss(id)}
           />

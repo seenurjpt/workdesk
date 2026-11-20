@@ -5,6 +5,7 @@ import { GlobalSearchHost, GlobalSearchProvider } from "@/components/shared/glob
 import { OfflineProvider } from "@/components/shared/offline-provider";
 import { ShortcutProvider } from "@/components/shared/keyboard-shortcuts";
 import { QuickAddProvider } from "@/components/tasks/quick-add";
+import { VoiceAssistantHost, VoiceAssistantProvider } from "@/components/voice/voice-assistant";
 import { TaskEditorHost, TaskEditorProvider } from "@/components/tasks/task-editor-context";
 import { Suspense } from "react";
 import { OfflineCacheRecorder } from "@/components/shared/offline-cache-recorder";
@@ -37,26 +38,29 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <TaskEditorProvider>
           <QuickAddProvider>
             <GlobalSearchProvider>
-              <a
-                href="#main"
-                className="focus:bg-btn-primary focus:text-btn-primary-fg sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-full focus:px-4 focus:py-2"
-              >
-                Skip to content
-              </a>
-              <ReminderProvider bundle={reminders}>
-                <Suspense>
-                  <OpenTaskFromUrl />
-                  <OfflineCacheRecorder />
-                </Suspense>
-                <FocusProvider initial={activeTimer}>
-                  <ShortcutProvider>
-                    <AppShell>{children}</AppShell>
-                    <TaskEditorHost />
-                    <GlobalSearchHost />
-                    <FocusMode />
-                  </ShortcutProvider>
-                </FocusProvider>
-              </ReminderProvider>
+              <VoiceAssistantProvider>
+                <a
+                  href="#main"
+                  className="focus:bg-btn-primary focus:text-btn-primary-fg sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-full focus:px-4 focus:py-2"
+                >
+                  Skip to content
+                </a>
+                <ReminderProvider bundle={reminders}>
+                  <Suspense>
+                    <OpenTaskFromUrl />
+                    <OfflineCacheRecorder />
+                  </Suspense>
+                  <FocusProvider initial={activeTimer}>
+                    <ShortcutProvider>
+                      <AppShell>{children}</AppShell>
+                      <TaskEditorHost />
+                      <GlobalSearchHost />
+                      <VoiceAssistantHost />
+                      <FocusMode />
+                    </ShortcutProvider>
+                  </FocusProvider>
+                </ReminderProvider>
+              </VoiceAssistantProvider>
             </GlobalSearchProvider>
           </QuickAddProvider>
         </TaskEditorProvider>

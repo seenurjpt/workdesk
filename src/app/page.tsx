@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   ArrowRight,
   Bell,
-  Check,
   CalendarDays,
   Download,
   Keyboard,
@@ -14,11 +14,12 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { LandingNav } from "@/components/landing/landing-nav";
+import { HeroThreads } from "@/components/landing/hero-threads";
+import { BounceCards } from "@/components/landing/bounce-cards";
+import { CtaGridScan } from "@/components/landing/cta-grid-scan";
 import { Bento } from "@/components/landing/bento";
-import { ProductPreview } from "@/components/landing/product-preview";
 import { Reveal } from "@/components/landing/reveal";
 import { TryIt } from "@/components/landing/try-it";
-import { TypingBar } from "@/components/landing/typing-bar";
 import { ClearPrivateCache } from "@/components/shared/clear-private-cache";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
@@ -39,6 +40,29 @@ const TICKER = [
   "Focus timer",
   "Works offline",
   "Weekly review",
+];
+
+const TRUST: [LucideIcon, string, string][] = [
+  [
+    Bell,
+    "Reminders in your browser",
+    "Notifications and a soft chime while WorkDesk is open. No email, no push, no noise.",
+  ],
+  [
+    WifiOff,
+    "Works offline",
+    "Install it as an app. Pages you have opened stay readable, and added or completed tasks sync later.",
+  ],
+  [
+    Link2,
+    "Everything connected",
+    "Paste a link, including Jira and Confluence, and it attaches to the task.",
+  ],
+  [
+    Download,
+    "Take it with you",
+    "Export all your data as JSON, tasks as CSV and notes as Markdown at any time.",
+  ],
 ];
 
 const STEPS = [
@@ -79,83 +103,44 @@ export default async function LandingPage() {
         Skip to content
       </a>
 
-      <LandingNav />
+      <LandingNav overlay />
 
       <main id="main">
-        <section className="bg-band relative overflow-hidden">
-          <div
-            aria-hidden
-            className="lp-dots absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent_85%)] opacity-60"
-          />
-          <div
-            aria-hidden
-            className="lp-blob bg-accent/40 absolute -top-24 -left-24 size-96 rounded-full blur-3xl"
-          />
-          <div
-            aria-hidden
-            className="lp-blob bg-info/20 absolute top-40 -right-24 size-96 rounded-full blur-3xl [animation-delay:-6s]"
-          />
+        <section className="px-3 py-3 md:px-6 md:py-4">
+          <div className="bg-band relative overflow-hidden rounded-[2rem] md:rounded-[2.5rem]">
+            <HeroThreads />
+            {/* Soft scrim so the threads fade out behind the copy and keep the text readable. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 [background:radial-gradient(ellipse_48%_46%_at_50%_56%,color-mix(in_srgb,var(--band)_92%,transparent)_0%,color-mix(in_srgb,var(--band)_70%,transparent)_55%,transparent_100%)]"
+            />
 
-          {/* Top padding includes the 65px the floating navbar covers. */}
-          <div className="relative mx-auto w-full max-w-[1200px] px-4 pt-[7.5rem] text-center md:px-8 md:pt-[10.5rem]">
-            <p className="text-caption border-border bg-surface/80 mx-auto mb-5 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 font-semibold">
-              <span className="bg-accent size-2 rounded-full" /> Tasks · Notes · Meeting notes
-            </p>
-            <h1 className="font-heading mx-auto max-w-4xl text-[44px] leading-[1.02] font-bold tracking-[-1px] sm:text-[76px]">
-              Your whole workday, on one{" "}
-              <span className="lp-mark box-decoration-clone px-1">calm desk</span>.
-            </h1>
-            <p className="text-muted-strong mx-auto mt-6 max-w-xl text-lg font-light">
-              Say it like you would to a colleague. WorkDesk turns it into a dated, tagged task and
-              keeps your notes linked to the work they came from.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Button
-                asChild
-                variant="accent"
-                className="px-7 shadow-[0_8px_24px_-8px_var(--accent)] transition-transform duration-200 hover:-translate-y-0.5"
-              >
-                <Link href="/register">
-                  Create your account <ArrowRight className="size-4" aria-hidden />
-                </Link>
-              </Button>
-              <Button asChild variant="secondary" className="bg-surface px-7">
-                <Link href="/login">Sign in</Link>
-              </Button>
-            </div>
-
-            <div className="mt-12">
-              <TypingBar />
-            </div>
-
-            <div className="relative mx-auto mt-10 max-w-4xl">
-              <div
-                aria-hidden
-                className="lp-float bg-surface border-border shadow-float absolute -top-6 -left-4 z-10 hidden items-center gap-3 rounded-2xl border px-4 py-3 text-left lg:flex"
-                style={{ "--r": "-4deg" } as React.CSSProperties}
-              >
-                <span className="bg-warning/20 text-warning inline-flex size-9 items-center justify-center rounded-xl">
-                  <Bell className="size-4" />
-                </span>
-                <span>
-                  <span className="text-body-sm block font-semibold">Send Q4 report</span>
-                  <span className="text-caption text-muted-strong">Due in 15 minutes</span>
-                </span>
+            <div className="relative mx-auto w-full max-w-[1200px] px-4 pt-32 pb-24 text-center md:px-8 md:pt-44 md:pb-36">
+              <p className="text-caption border-border bg-surface/80 mx-auto mb-5 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 font-semibold">
+                <span className="bg-accent size-2 rounded-full" /> Tasks · Notes · Meeting notes
+              </p>
+              <h1 className="font-heading mx-auto max-w-4xl text-[44px] leading-[1.02] font-bold tracking-[-1px] sm:text-[76px]">
+                Your whole workday, on one{" "}
+                <span className="lp-mark box-decoration-clone px-1">calm desk</span>.
+              </h1>
+              <p className="text-muted-strong mx-auto mt-6 max-w-xl text-lg font-normal">
+                Say it like you would to a colleague. WorkDesk turns it into a dated, tagged task
+                and keeps your notes linked to the work they came from.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  asChild
+                  variant="accent"
+                  className="px-7 shadow-[0_8px_24px_-8px_var(--accent)] transition-transform duration-200 hover:-translate-y-0.5"
+                >
+                  <Link href="/register">
+                    Create your account <ArrowRight className="size-4" aria-hidden />
+                  </Link>
+                </Button>
+                <Button asChild variant="secondary" className="bg-surface px-7">
+                  <Link href="/login">Sign in</Link>
+                </Button>
               </div>
-              <div
-                aria-hidden
-                className="lp-float bg-surface border-border shadow-float absolute top-1/3 -right-6 z-10 hidden items-center gap-3 rounded-2xl border px-4 py-3 text-left [animation-delay:-2s] lg:flex"
-                style={{ "--r": "3deg" } as React.CSSProperties}
-              >
-                <span className="bg-accent text-on-accent inline-flex size-9 items-center justify-center rounded-xl">
-                  <Check className="size-4" strokeWidth={3} />
-                </span>
-                <span>
-                  <span className="text-body-sm block font-semibold">Task completed</span>
-                  <span className="text-caption text-accent-text font-semibold">Undo</span>
-                </span>
-              </div>
-              <ProductPreview className="rounded-b-none border-b-0" />
             </div>
           </div>
         </section>
@@ -311,76 +296,58 @@ export default async function LandingPage() {
           >
             Quiet by design, and your data stays yours.
           </h2>
-          <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              [
-                Bell,
-                "Reminders in your browser",
-                "Notifications and a soft chime while WorkDesk is open. No email, no push, no noise.",
-              ],
-              [
-                WifiOff,
-                "Works offline",
-                "Install it as an app. Pages you have opened stay readable, and added or completed tasks sync later.",
-              ],
-              [
-                Link2,
-                "Everything connected",
-                "Paste a link, including Jira and Confluence, and it attaches to the task.",
-              ],
-              [
-                Download,
-                "Take it with you",
-                "Export all your data as JSON, tasks as CSV and notes as Markdown at any time.",
-              ],
-            ].map(([Icon, title, body]) => {
-              const I = Icon as LucideIcon;
-              return (
-                <li key={title as string} className="border-border rounded-3xl border p-6">
-                  <I className="text-accent-text mb-3 size-6" aria-hidden />
-                  <h3 className="font-heading text-xl font-bold">{title as string}</h3>
-                  <p className="text-body-sm text-muted-strong mt-2 leading-relaxed">
-                    {body as string}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
+          <BounceCards
+            className="mt-10"
+            cardClassName="border-border bg-surface rounded-3xl border p-6"
+            items={TRUST.map(([Icon, title, body]) => (
+              <div key={title}>
+                <Icon className="text-accent-text mb-3 size-6" aria-hidden />
+                <h3 className="font-heading text-xl font-bold">{title}</h3>
+                <p className="text-body-sm text-muted-strong mt-2 leading-relaxed">{body}</p>
+              </div>
+            ))}
+          />
         </section>
 
         <section className="px-4 pb-20 md:px-8">
-          <div className="bg-ticker text-ticker-fg mx-auto max-w-[1200px] rounded-[36px] px-6 py-14 text-center sm:py-20">
-            <CalendarDays className="mx-auto mb-4 size-8" aria-hidden />
-            <h2 className="font-heading mx-auto max-w-2xl text-[34px] leading-tight font-bold sm:text-[48px]">
-              Start tomorrow with a plan.
-            </h2>
-            <p className="mx-auto mt-4 max-w-md text-lg font-light opacity-80">
-              Make an account, add your first task, and see your day at a glance.
-            </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-3">
-              <Button asChild variant="accent" className="px-7">
-                <Link href="/register">
-                  Create your account <ArrowRight className="size-4" aria-hidden />
+          <div className="relative isolate mx-auto max-w-[1200px] overflow-hidden rounded-[36px] bg-[#050807] px-6 py-14 text-center text-white ring-1 ring-white/10 sm:py-20">
+            <CtaGridScan />
+            <div className="relative">
+              <CalendarDays className="mx-auto mb-4 size-8" aria-hidden />
+              <h2 className="font-heading mx-auto max-w-2xl text-[34px] leading-tight font-bold sm:text-[48px]">
+                Start tomorrow with a plan.
+              </h2>
+              <p className="mx-auto mt-4 max-w-md text-lg font-light opacity-80">
+                Make an account, add your first task, and see your day at a glance.
+              </p>
+              <div className="mt-8 flex flex-wrap justify-center gap-3">
+                <Button asChild variant="accent" className="px-7">
+                  <Link href="/register">
+                    Create your account <ArrowRight className="size-4" aria-hidden />
+                  </Link>
+                </Button>
+                <Link
+                  href="/login"
+                  className="text-nav inline-flex h-11 items-center rounded-[28px] px-6 underline underline-offset-4 hover:opacity-80"
+                >
+                  I already have an account
                 </Link>
-              </Button>
-              <Link
-                href="/login"
-                className="text-nav inline-flex h-11 items-center rounded-[28px] px-6 underline underline-offset-4 hover:opacity-80"
-              >
-                I already have an account
-              </Link>
+              </div>
             </div>
           </div>
         </section>
       </main>
 
       <footer className="border-border border-t">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-8 md:px-8">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col items-center gap-4 px-4 py-8 md:flex-row md:flex-wrap md:gap-x-6 md:gap-y-3 md:px-8">
           <Logo href="/" />
-          <span className="text-caption text-muted-strong flex items-center gap-1.5">
+          <span className="text-caption text-muted-strong hidden items-center gap-1.5 md:flex">
             <Keyboard className="size-4" aria-hidden /> Press ? inside the app for shortcuts
           </span>
-          <nav aria-label="Account" className="text-nav ml-auto flex flex-wrap gap-5">
+          <nav
+            aria-label="Account"
+            className="text-nav flex flex-wrap justify-center gap-x-5 gap-y-2 md:ml-auto"
+          >
             <Link href="/features" className="hover:underline">
               All features
             </Link>
@@ -393,6 +360,17 @@ export default async function LandingPage() {
           </nav>
         </div>
       </footer>
+
+      <div className="flex justify-center px-4 pb-8 md:px-8">
+        <Image
+          src="/loki.jpg"
+          alt="Loki"
+          width={1152}
+          height={768}
+          unoptimized
+          className="h-auto w-[120px] max-w-full rounded-lg"
+        />
+      </div>
     </div>
   );
 }

@@ -8,6 +8,8 @@ export const SHORTCUTS: ShortcutGroup[] = [
     group: "Create",
     items: [
       { keys: ["Q"], label: "Quick add a task" },
+      { keys: ["V"], label: "Add a task by voice (Chrome, Edge, Safari)" },
+      { keys: ["M"], label: "Voice assistant: open pages, add tasks, search" },
       { keys: ["N"], label: "New note" },
     ],
   },

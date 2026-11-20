@@ -3,6 +3,7 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Sparkles } from "lucide-react";
 import { parseQuickAdd } from "@/lib/quick-add-parser";
+import { CurvedInput } from "@/components/landing/curved-input";
 import { describeParsed } from "@/components/landing/parsed-chips";
 
 const EXAMPLES = [
@@ -29,20 +30,39 @@ export function TryIt() {
 
   return (
     <div className="border-border bg-surface shadow-float rounded-3xl border p-4 sm:p-6">
-      <label
-        htmlFor="try-it"
-        className="text-caption text-muted-strong mb-2 flex items-center gap-1.5 font-semibold"
-      >
+      <p className="text-caption text-muted-strong mb-3 flex items-center gap-1.5 font-semibold">
         <Sparkles className="size-4" aria-hidden /> Try it. Type anything, nothing is saved.
-      </label>
-      <input
-        id="try-it"
+      </p>
+      <CurvedInput
         value={value}
-        onChange={(e) => setValue(e.target.value)}
-        spellCheck={false}
-        autoComplete="off"
+        onChange={setValue}
+        ariaLabel="Type a task the way you would say it"
         placeholder="Call Sam friday 3pm #sales !p1"
-        className="border-border bg-surface-soft/60 focus-visible:border-accent w-full rounded-2xl border px-4 py-3 text-base font-semibold"
+        type="text"
+        width="100%"
+        height={60}
+        bend={18}
+        cornerRadius={18}
+        showButton={false}
+        shadowSize="sm"
+        shadowColor="#000000"
+        backgroundColor="var(--surface-soft)"
+        textColor="var(--text)"
+        placeholderColor="var(--text-muted)"
+        borderColor="var(--border)"
+        buttonColor="var(--accent)"
+        icon={
+          <g>
+            <circle r={11} fill="var(--accent)" />
+            <path
+              d="M -4.5 0 H 4.5 M 0 -4.5 V 4.5"
+              stroke="var(--on-accent)"
+              strokeWidth={2}
+              strokeLinecap="round"
+              fill="none"
+            />
+          </g>
+        }
       />
       <div className="mt-3 flex flex-wrap gap-2">
         {EXAMPLES.map((ex) => (
