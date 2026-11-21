@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
-// On-device voice input (Brave, Firefox) runs Whisper in `public/speech-worker.js`: the library
+// On-device voice input (Brave, Firefox) runs Moonshine in `public/speech-worker.js`: the library
 // (and its WebAssembly runtime) comes from jsDelivr, the model files from Hugging Face. Only
 // downloads; audio never leaves the device.
 const SPEECH_LIB = "https://cdn.jsdelivr.net";

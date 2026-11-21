@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseVoiceCommand } from "@/lib/voice-commands";
+import { parseVoiceCommand, smallTalkReply } from "@/lib/voice-commands";
 
 const VOCAB = {
   projects: [
@@ -92,5 +92,57 @@ describe("voice commands: everything else", () => {
   it("does not guess", () => {
     expect(cmd("the weather is nice").type).toBe("unknown");
     expect(cmd("").type).toBe("unknown");
+  });
+});
+
+describe("voice commands: small talk", () => {
+  it.each([
+    ["Good morning", "morning"],
+    ["good morning!", "morning"],
+    ["Good morning, WorkDesk", "morning"],
+    ["Hey", "greeting"],
+    ["hello there", "greeting"],
+    ["Thank you so much.", "thanks"],
+    ["How are you doing", "howAreYou"],
+    ["what's up", "howAreYou"],
+    ["Who are you?", "whoAreYou"],
+    ["what time is it", "time"],
+    ["What day is it today", "date"],
+  ])("%s", (said, topic) => {
+    expect(cmd(said)).toEqual({ type: "smallTalk", topics: [topic] });
+  });
+
+  it("understands several pleasantries at once", () => {
+    expect(cmd("Hello, good morning! How are you?")).toEqual({
+      type: "smallTalk",
+      topics: ["greeting", "morning", "howAreYou"],
+    });
+  });
+
+  it("doesn't swallow real commands", () => {
+    expect(cmd("hey open notes")).toMatchObject({ type: "navigate", path: "/notes" });
+    expect(cmd("today")).toMatchObject({ type: "navigate", path: "/today" });
+    expect(cmd("good morning routine task")).not.toMatchObject({ type: "smallTalk" });
+    expect(cmd("help me plan my day")).toMatchObject({ type: "unknown" });
+  });
+});
+
+describe("small talk replies", () => {
+  const at = (iso: string) => ({ name: "Asha Rao", timezone: "Asia/Kolkata", now: new Date(iso) });
+  it("greets by first name and the real time of day", () => {
+    expect(smallTalkReply(["morning"], at("2026-11-21T03:30:00Z"))).toBe(
+      "Good morning, Asha! What can I do for you?",
+    );
+    // 9 pm in Kolkata: "good morning" gets "good evening" back.
+    expect(smallTalkReply(["morning"], at("2026-11-21T15:30:00Z"))).toMatch(/^Good evening, Asha!/);
+  });
+  it("answers several at once", () => {
+    expect(smallTalkReply(["greeting", "morning", "howAreYou"], at("2026-11-21T03:30:00Z"))).toBe(
+      "Good morning, Asha! I'm doing great, thanks for asking! What can I do for you?",
+    );
+  });
+  it("tells the time in the user's timezone", () => {
+    expect(smallTalkReply(["time"], at("2026-11-21T03:30:00Z"))).toBe("It's 9:00 AM.");
+    expect(smallTalkReply(["date"], at("2026-11-21T03:30:00Z"))).toBe("It's Saturday 21 November.");
   });
 });

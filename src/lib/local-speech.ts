@@ -58,15 +58,18 @@ function getWorker(): Worker {
   return worker;
 }
 
-/** True when this browser can record audio and run the on-device model. */
-export function canUseLocalSpeech(): boolean {
+/** True when this browser can record audio (all the cloud engine needs). */
+export function canRecordAudio(): boolean {
   return (
     typeof window !== "undefined" &&
-    typeof Worker !== "undefined" &&
-    typeof WebAssembly !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&
     typeof AudioContext !== "undefined"
   );
+}
+
+/** True when this browser can record audio and run the on-device model. */
+export function canUseLocalSpeech(): boolean {
+  return canRecordAudio() && typeof Worker !== "undefined" && typeof WebAssembly !== "undefined";
 }
 
 export function hasModelConsent(): boolean {
@@ -162,10 +165,14 @@ export async function startRecording({
     },
   });
   const ctx = new AudioContext();
+  // Can start suspended under autoplay rules, and then no audio would ever arrive.
+  if (ctx.state === "suspended") void ctx.resume().catch(() => {});
   const source = ctx.createMediaStreamSource(stream);
   // ScriptProcessor is deprecated but works everywhere and needs no extra module file.
   const processor = ctx.createScriptProcessor(4096, 1, 1);
   const chunks: Float32Array[] = [];
+  /** Per chunk: was it louder than the background? Used to trim silence before transcribing. */
+  const voiced: boolean[] = [];
   const startedAt = performance.now();
   let noiseFloor = 0;
   let noiseSamples = 0;
@@ -183,9 +190,14 @@ export async function startRecording({
     // First ~300 ms: learn the room's background level.
     if (now - startedAt < 300) {
       noiseFloor = (noiseFloor * noiseSamples + rms) / ++noiseSamples;
+      // Calibration chunks may already hold speech; mark loud ones so trimming keeps them.
+      voiced.push(rms > 0.02);
       return;
     }
-    const threshold = Math.max(0.012, noiseFloor * 2.5);
+    // Capped: someone who starts talking straight away would otherwise teach it that their voice
+    // is the background, and nothing after would count as speech.
+    const threshold = Math.max(0.012, Math.min(noiseFloor, 0.01) * 2.5);
+    voiced.push(rms > threshold);
     if (rms > threshold) {
       heardSpeech = true;
       lastVoiceAt = now;
@@ -221,10 +233,16 @@ export async function startRecording({
       const rate = ctx.sampleRate;
       teardown();
       if (!heardSpeech || chunks.length === 0) return null;
-      const length = chunks.reduce((n, c) => n + c.length, 0);
+      // Keep only the speech, plus ~0.35 s either side so soft first and last sounds survive.
+      // Less audio is a smaller upload and a faster transcription.
+      const pad = Math.ceil((0.35 * rate) / (chunks[0]?.length || 4096));
+      const first = Math.max(0, voiced.indexOf(true) - pad);
+      const last = Math.min(chunks.length - 1, voiced.lastIndexOf(true) + pad);
+      const kept = first <= last ? chunks.slice(first, last + 1) : chunks;
+      const length = kept.reduce((n, c) => n + c.length, 0);
       const joined = new Float32Array(length);
       let offset = 0;
-      for (const c of chunks) {
+      for (const c of kept) {
         joined.set(c, offset);
         offset += c.length;
       }

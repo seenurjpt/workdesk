@@ -296,7 +296,9 @@ export function QuickAddInput({
               ? "Listening… click to stop"
               : speech.engine === "local"
                 ? "Speak your task. It's turned into text on this device."
-                : "Speak your task. Your browser's speech service turns it into text."
+                : speech.engine === "cloud"
+                  ? "Speak your task. Google Gemini turns it into text."
+                  : "Speak your task. Your browser's speech service turns it into text."
           }
           className={cn(
             "focus-visible:outline-ring absolute right-1.5 z-10 grid place-items-center rounded-xl transition-colors duration-150 focus-visible:outline-2",
@@ -335,7 +337,7 @@ export function QuickAddInput({
           <LiveWaveform active getLevel={getLevel} height={24} className="mb-2" />
         )}
         <SpeechNotice speech={speech} className={text.trim() ? "mb-3" : undefined} />
-        {speech.engine === "local" && voiceActive && !text.trim() ? null : speech.listening &&
+        {speech.engine !== "native" && voiceActive && !text.trim() ? null : speech.listening &&
           !text.trim() ? (
           <p className="text-caption text-muted-strong">
             Listening… try “call Priya tomorrow at 4 pm high priority”

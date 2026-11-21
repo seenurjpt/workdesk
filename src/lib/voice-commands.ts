@@ -13,7 +13,8 @@ export interface CommandVocabulary {
 
 export type VoiceCommand =
   | { type: "navigate"; path: string; label: string }
-  | { type: "addTask"; text: string }
+  /** `formatted`: `text` is already quick-add syntax (from Gemini), so skip `spokenToQuickAdd`. */
+  | { type: "addTask"; text: string; formatted?: boolean }
   | { type: "newNote"; title: string }
   | { type: "newMeeting" }
   | { type: "search"; query: string }
@@ -22,10 +23,84 @@ export type VoiceCommand =
   | { type: "stopTimer" }
   | { type: "help" }
   | { type: "cancel" }
+  /** Everyday small talk the assistant answers itself (no Gemini needed). */
+  | { type: "smallTalk"; topics: SmallTalkTopic[] }
+  /** A conversational answer written by Gemini. */
+  | { type: "reply"; text: string }
   | { type: "unknown"; heard: string };
 
+export type SmallTalkTopic =
+  | "greeting"
+  | "morning"
+  | "afternoon"
+  | "evening"
+  | "night"
+  | "thanks"
+  | "howAreYou"
+  | "whoAreYou"
+  | "time"
+  | "date";
+
+/** Who the greeting is addressed to: "good morning workdesk", "hi there". */
+const ADDRESSEE = "(?: (?:there|workdesk|assistant|buddy|friend|team|everyone|all|again))?";
+
+/**
+ * Small-talk phrases. An utterance counts as small talk only when it is made up entirely of these
+ * (so "hello, good morning, how are you?" is, and "good morning routine task" isn't).
+ */
+const SMALL_TALK: [string, SmallTalkTopic][] = [
+  [`good ?morning${ADDRESSEE}|morning${ADDRESSEE}`, "morning"],
+  [`good ?afternoon${ADDRESSEE}|afternoon${ADDRESSEE}`, "afternoon"],
+  [`good ?evening${ADDRESSEE}|evening${ADDRESSEE}`, "evening"],
+  [`good ?night${ADDRESSEE}|night night`, "night"],
+  [
+    `(?:hi|hello|hey|hiya|howdy|hey ya|yo|namaste|greetings|hola|hii+|helo)${ADDRESSEE}`,
+    "greeting",
+  ],
+  [
+    "(?:thanks?(?: you)?|thank you|thx|cheers|great|perfect|awesome|nice|cool|ok thanks)(?: so much| very much| a lot)?(?: thanks?(?: you)?)?",
+    "thanks",
+  ],
+  [
+    "how are you(?: doing)?(?: today)?|how(?:'s| is) it going|how are things|how(?:'s| is) your day(?: going)?|what's up|whats up|sup|how do you do",
+    "howAreYou",
+  ],
+  [
+    "who are you|what are you|what's your name|what is your name|who is this|who am i talking to",
+    "whoAreYou",
+  ],
+  ["what time is it(?: now)?|what's the time(?: now)?|what is the time(?: now)?|tell me the time", "time"],
+  [
+    "what(?:'s| is) (?:the )?(?:date|day)(?: today)?|what day is (?:it|today)(?: today)?|what's today|today's date|what is today's date",
+    "date",
+  ],
+];
+const SMALL_TALK_RE = SMALL_TALK.map(
+  ([src, topic]) => [new RegExp(`^(?:${src})(?: |$)`), topic] as const,
+);
+
+function smallTalk(raw: string): SmallTalkTopic[] | undefined {
+  let t = raw
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/[.,!?。;:-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:ok|okay|so|um+|uh+|oh)\s+/, "");
+  if (!t) return undefined;
+  const topics: SmallTalkTopic[] = [];
+  // Eat one phrase at a time from the front; give up as soon as something else is said.
+  while (t) {
+    const hit = SMALL_TALK_RE.find(([re]) => re.test(t));
+    if (!hit) return undefined;
+    if (!topics.includes(hit[1])) topics.push(hit[1]);
+    t = t.replace(hit[0], "").trim();
+  }
+  return topics;
+}
+
 /** Spoken page names → route. Longest phrases first so "weekly review" beats "review". */
-const PAGES: { words: string[]; path: string; label: string }[] = [
+export const PAGES: { words: string[]; path: string; label: string }[] = [
   { words: ["weekly review", "week review"], path: "/review?tab=weekly", label: "Weekly review" },
   { words: ["daily review", "review"], path: "/review", label: "Daily review" },
   {
@@ -116,6 +191,8 @@ function findTag(target: string, vocab: CommandVocabulary) {
 }
 
 export function parseVoiceCommand(raw: string, vocab: CommandVocabulary): VoiceCommand {
+  const topics = smallTalk(raw);
+  if (topics) return { type: "smallTalk", topics };
   const text = clean(raw);
   if (!text) return { type: "unknown", heard: raw };
   const lower = text.toLowerCase();
@@ -123,8 +200,9 @@ export function parseVoiceCommand(raw: string, vocab: CommandVocabulary): VoiceC
   if (/^(?:cancel|stop|never ?mind|nothing|forget it|close|exit|bye)$/i.test(lower)) {
     return { type: "cancel" };
   }
+  // Whole utterance only: "help me plan my day" is a request, not a request for the command list.
   if (
-    /^(?:help|what can you do|what can i say|what do you do|how do(?:es)? (?:this|you|it) work|commands)/i.test(
+    /^(?:help|what can you do|what can i say|what do you do|how do(?:es)? (?:this|you|it) work|commands)$/i.test(
       lower,
     )
   ) {
@@ -216,6 +294,71 @@ export function parseVoiceCommand(raw: string, vocab: CommandVocabulary): VoiceC
   if (search) return { type: "search", query: search[1].trim() };
 
   return { type: "unknown", heard: raw };
+}
+
+function partOfDay(hour: number): "morning" | "afternoon" | "evening" {
+  return hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+}
+
+const OFFER = "What can I do for you?";
+
+/**
+ * The assistant's answer to small talk, in the user's timezone. Several topics are answered in
+ * one go: "hello, good morning, how are you?" → "Good morning, Asha! I'm doing well, thanks…".
+ */
+export function smallTalkReply(
+  topics: SmallTalkTopic[],
+  { name, timezone, now = new Date() }: { name?: string; timezone: string; now?: Date },
+): string {
+  const first = name?.trim().split(/\s+/)[0];
+  const you = first ? `, ${first}` : "";
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "numeric", hourCycle: "h23" })
+      .formatToParts(now)
+      .find((p) => p.type === "hour")?.value ?? 12,
+  );
+  const has = (t: SmallTalkTopic) => topics.includes(t);
+  const parts: string[] = [];
+
+  // One greeting at most. Always the real time of day, so "good morning" at 9 pm gets "Good evening".
+  if (has("night")) parts.push(`Good night${you}!`);
+  else if (has("morning") || has("afternoon") || has("evening")) {
+    parts.push(`Good ${partOfDay(hour)}${you}!`);
+  } else if (has("greeting")) parts.push(`Hi${you}!`);
+
+  if (has("howAreYou")) parts.push("I'm doing great, thanks for asking!");
+  if (has("whoAreYou")) {
+    parts.push(
+      "I'm your WorkDesk assistant. I can open pages, add tasks, search, mark tasks done, and start notes.",
+    );
+  }
+  if (has("time")) {
+    const time = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(now);
+    parts.push(`It's ${time}.`);
+  }
+  if (has("date")) {
+    const date = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(now);
+    parts.push(`It's ${date}.`);
+  }
+  if (has("thanks")) parts.push(parts.length ? "And you're welcome!" : "You're welcome!");
+
+  if (has("night")) parts.push("Rest well.");
+  else if (!has("thanks") && !has("time") && !has("date")) parts.push(OFFER);
+  return parts.join(" ");
+}
+
+/** Small talk that ends the conversation (the panel closes after answering). */
+export function isGoodbye(topics: SmallTalkTopic[]): boolean {
+  return topics.includes("night") || (topics.length === 1 && topics[0] === "thanks");
 }
 
 export const VOICE_EXAMPLES = [

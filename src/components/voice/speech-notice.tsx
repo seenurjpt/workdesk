@@ -13,6 +13,20 @@ const mb = (bytes: number) => Math.round(bytes / 1_000_000);
  * Renders nothing for the browser's built-in speech service.
  */
 export function SpeechNotice({ speech, className }: { speech: SpeechInput; className?: string }) {
+  if (speech.engine === "cloud") {
+    if (!speech.listening && !speech.transcribing) return null;
+    return (
+      <p
+        className={cn("text-caption text-muted-strong flex items-center gap-1.5", className)}
+        aria-live="polite"
+      >
+        {speech.transcribing && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
+        {speech.transcribing
+          ? "Turning speech into text…"
+          : "Listening… the text appears when you stop talking."}
+      </p>
+    );
+  }
   if (speech.engine !== "local") return null;
 
   if (speech.needsConsent) {

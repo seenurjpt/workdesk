@@ -18,6 +18,7 @@ import { getActiveTimer } from "@/server/timer";
 import { after } from "next/server";
 import { getSidebarData } from "@/server/sidebar";
 import { loadUserDoc, requireUser } from "@/server/session";
+import { isVoiceAiEnabled } from "@/server/voice-ai";
 import { maybePurgeExpired, purgeDue } from "@/server/trash";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -33,7 +34,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   ]);
 
   return (
-    <AppProvider value={{ user, projects, tags, generalCount }}>
+    <AppProvider value={{ user, projects, tags, generalCount, voiceAi: isVoiceAiEnabled() }}>
       <OfflineProvider>
         <TaskEditorProvider>
           <QuickAddProvider>

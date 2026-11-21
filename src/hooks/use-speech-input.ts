@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { cloudTranscribe, isCloudSpeechEnabled } from "@/lib/cloud-speech";
 import {
+  canRecordAudio,
   canUseLocalSpeech,
   giveModelConsent,
   hasModelConsent,
@@ -56,12 +58,16 @@ function getCtor(): RecognitionCtor | null {
 }
 /**
  * "native": the browser's own speech service (Chrome, Edge, Safari) — instant, live text.
- * "local": on-device Whisper (Brave, Firefox) — one-time model download, text after you stop.
+ * "cloud": recorded here, turned into text by Gemini on the server (Brave, Firefox, when the
+ *          server has GEMINI_API_KEY) — no download, text after you stop.
+ * "local": on-device Moonshine (Brave, Firefox, no Gemini) — one-time model download, text after
+ *          you stop.
  */
-export type SpeechEngine = "native" | "local";
+export type SpeechEngine = "native" | "cloud" | "local";
 
 export function speechEngine(): SpeechEngine | null {
   if (getCtor()) return "native";
+  if (isCloudSpeechEnabled() && canRecordAudio()) return "cloud";
   if (canUseLocalSpeech()) return "local";
   return null;
 }
@@ -85,9 +91,19 @@ function useSpeechEngine(): SpeechEngine | null {
   return useSyncExternalStore(noop, speechEngine, () => null);
 }
 
+/**
+ * The rules and replies are English, so recognition stays English: the browser's own English
+ * variant (en-IN, en-GB …) when it has one, else US English. A Hindi or German browser would
+ * otherwise hear everything in that language and no command would ever match.
+ */
+export function recognitionLang(): string {
+  const lang = typeof navigator === "undefined" ? "" : navigator.language || "";
+  return /^en\b/i.test(lang) ? lang : "en-US";
+}
+
 const MAX_LISTEN_MS = 30_000;
 /** Stop after this much silence once something has been heard. */
-const SILENCE_MS = 1_800;
+const SILENCE_MS = 1_500;
 /** Guesses to ask the engine for per phrase. */
 const ALTERNATIVES = 5;
 
@@ -103,13 +119,14 @@ const ERROR_TEXT: Record<string, string> = {
   "no-speech": "Didn't catch that. Try again.",
   download: "Couldn't download the speech model. Check your connection and try again.",
   transcribe: "Couldn't turn that into text. Please try again.",
+  cloud: "Couldn't reach the speech service. Check your connection and try again.",
 };
 
 export interface SpeechInput {
   supported: boolean;
   engine: SpeechEngine | null;
   listening: boolean;
-  /** On-device engine only: turning the recording into text. */
+  /** Cloud and on-device engines: turning the recording into text. */
   transcribing: boolean;
   /** On-device engine only: model download progress while it downloads. */
   download: DownloadProgress | null;
@@ -135,11 +152,14 @@ export function useSpeechInput({
   onEnd,
   onError,
   choose,
+  cloud,
 }: {
   onText: (finalText: string, interimText: string) => void;
   onEnd?: (finalText: string) => void;
   onError?: (message: string) => void;
   choose?: (alternatives: SpeechAlternatives) => string;
+  /** Cloud engine: turns the recording into text. Defaults to plain Gemini transcription. */
+  cloud?: (audio: Float32Array) => Promise<string>;
 }): SpeechInput {
   const engine = useSpeechEngine();
   const supported = engine !== null;
@@ -152,14 +172,14 @@ export function useSpeechInput({
   const recRef = useRef<Recognition | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const silenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handlers = useRef({ onText, onEnd, onError, choose });
+  const handlers = useRef({ onText, onEnd, onError, choose, cloud });
   useEffect(() => {
-    handlers.current = { onText, onEnd, onError, choose };
+    handlers.current = { onText, onEnd, onError, choose, cloud };
   });
 
   useEffect(() => onDownloadProgress((p) => setDownload(p)), []);
 
-  /* ---------- on-device engine ---------- */
+  /* ---------- recorded engines: cloud (Gemini) and on-device ---------- */
 
   const stopLocal = useCallback(async () => {
     const rec = localRef.current;
@@ -181,11 +201,16 @@ export function useSpeechInput({
     if (round !== roundRef.current) return;
     if (!audio) return fail("no-speech");
     setTranscribing(true);
+    const viaCloud = speechEngine() === "cloud";
     let text: string;
     try {
-      text = await transcribe(audio);
+      text = viaCloud
+        ? (await (handlers.current.cloud ?? cloudTranscribe)(audio)).trim()
+        : await transcribe(audio);
     } catch {
-      if (round === roundRef.current) fail(isModelReady() ? "transcribe" : "download");
+      if (round !== roundRef.current) return;
+      if (viaCloud) fail(navigator.onLine ? "cloud" : "network");
+      else fail(isModelReady() ? "transcribe" : "download");
       return;
     }
     if (round !== roundRef.current) return;
@@ -196,7 +221,8 @@ export function useSpeechInput({
   }, []);
 
   const startLocal = useCallback(async () => {
-    if (!hasModelConsent()) {
+    const viaCloud = speechEngine() === "cloud";
+    if (!viaCloud && !hasModelConsent()) {
       setNeedsConsent(true);
       return;
     }
@@ -205,8 +231,8 @@ export function useSpeechInput({
     localRef.current = null;
     setTranscribing(false);
     setListening(true);
-    // Download/load the model while the user talks.
-    loadModel().catch(() => {
+    // On-device: download/load the model while the user talks.
+    if (!viaCloud) loadModel().catch(() => {
       if (round !== roundRef.current) return;
       localRef.current?.cancel();
       localRef.current = null;
@@ -215,7 +241,11 @@ export function useSpeechInput({
       handlers.current.onError?.(ERROR_TEXT.download);
     });
     try {
-      const rec = await startRecording({ onAutoStop: () => void stopLocal() });
+      const rec = await startRecording({
+        onAutoStop: () => void stopLocal(),
+        // Gemini copes with a natural pause, so stop sooner: every 100 ms here is 100 ms of waiting.
+        silenceMs: viaCloud ? 1_000 : 1_500,
+      });
       if (round !== roundRef.current) return rec.cancel();
       localRef.current = rec;
     } catch (error) {
@@ -261,7 +291,7 @@ export function useSpeechInput({
   const start = useCallback(() => {
     const Ctor = getCtor();
     if (!Ctor) {
-      if (canUseLocalSpeech()) void startLocal();
+      if (speechEngine()) void startLocal();
       return;
     }
     if (recRef.current) {
@@ -274,7 +304,7 @@ export function useSpeechInput({
       if (silenceRef.current) clearTimeout(silenceRef.current);
     }
     const rec = new Ctor();
-    rec.lang = navigator.language || "en-US";
+    rec.lang = recognitionLang();
     // Android Chrome repeats words in continuous mode, so there we let the
     // engine stop on its own after a pause; elsewhere we keep listening
     // through short pauses and stop on our own silence timer.
@@ -285,6 +315,7 @@ export function useSpeechInput({
 
     const finals: string[] = [];
     let finalText = "";
+    let lastInterim = "";
     rec.onresult = (e) => {
       let interim = "";
       for (let i = 0; i < e.results.length; i++) {
@@ -302,7 +333,8 @@ export function useSpeechInput({
         }
       }
       finalText = finals.filter(Boolean).join(" ");
-      handlers.current.onText(finalText, interim.trim());
+      lastInterim = interim.trim();
+      handlers.current.onText(finalText, lastInterim);
       if (!android) {
         if (silenceRef.current) clearTimeout(silenceRef.current);
         silenceRef.current = setTimeout(() => rec.stop(), SILENCE_MS);
@@ -322,7 +354,10 @@ export function useSpeechInput({
       if (recRef.current !== rec) return; // replaced by a newer round
       recRef.current = null;
       setListening(false);
-      handlers.current.onEnd?.(finalText.trim());
+      // Chrome sometimes ends without turning the last words into a final result; what the user
+      // saw on screen is still what they said.
+      const said = [finalText, lastInterim].filter(Boolean).join(" ").trim();
+      handlers.current.onEnd?.(said);
     };
 
     recRef.current = rec;

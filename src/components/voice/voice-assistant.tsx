@@ -18,8 +18,14 @@ import { useGlobalSearch } from "@/components/shared/global-search";
 import { useThemeChoice } from "@/components/shared/theme-toggle";
 import { useFocus } from "@/components/focus/focus-provider";
 import { useOffline } from "@/components/shared/offline-provider";
-import { hasSpeechRecognition, speechEngine, useSpeechInput } from "@/hooks/use-speech-input";
+import {
+  hasSpeechRecognition,
+  recognitionLang,
+  speechEngine,
+  useSpeechInput,
+} from "@/hooks/use-speech-input";
 import { hasModelConsent, loadModel } from "@/lib/local-speech";
+import { cloudCommand, isCloudSpeechEnabled, warmUpCloudSpeech } from "@/lib/cloud-speech";
 import { usePersistentBool } from "@/hooks/use-persistent-bool";
 import { useTaskMutations, VIEW_KEY } from "@/hooks/use-task-mutations";
 import { formatDue } from "@/lib/format";
@@ -27,7 +33,13 @@ import { isNetworkError } from "@/lib/offline-queue";
 import { parseQuickAdd } from "@/lib/quick-add-parser";
 import { isTypingTarget } from "@/lib/typing-target";
 import { cn } from "@/lib/utils";
-import { parseVoiceCommand, VOICE_EXAMPLES, type VoiceCommand } from "@/lib/voice-commands";
+import {
+  isGoodbye,
+  parseVoiceCommand,
+  smallTalkReply,
+  VOICE_EXAMPLES,
+  type VoiceCommand,
+} from "@/lib/voice-commands";
 import { pickBestTranscript, spokenToQuickAdd } from "@/lib/voice-input";
 import { SpeechNotice } from "@/components/voice/speech-notice";
 import { VoiceOrb, type OrbState } from "@/components/voice/voice-visuals";
@@ -90,17 +102,48 @@ export function VoiceAssistantProvider({ children }: { children: ReactNode }) {
 
 /* ---------- speaking back ---------- */
 
+/**
+ * Held at module level: Chrome can garbage-collect an utterance that nothing references while
+ * it is still speaking, and then `onend` never fires (the orb would pulse forever).
+ */
+let currentUtterance: SpeechSynthesisUtterance | null = null;
+
+/** A natural-sounding English voice when the system has one. */
+function pickVoice(synth: SpeechSynthesis, lang: string): SpeechSynthesisVoice | undefined {
+  const voices = synth.getVoices();
+  const english = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
+  return (
+    english.find((v) => v.lang === lang && /natural|neural|google|samantha|aria|jenny/i.test(v.name)) ??
+    english.find((v) => /natural|neural|google|samantha|aria|jenny/i.test(v.name)) ??
+    english.find((v) => v.lang === lang) ??
+    english.find((v) => v.default) ??
+    english[0]
+  );
+}
+
 function speak(text: string, onSpeaking?: (speaking: boolean) => void) {
   try {
     const synth = window.speechSynthesis;
     if (!synth) return;
     synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = navigator.language || "en-US";
+    u.lang = recognitionLang();
+    const voice = pickVoice(synth, u.lang);
+    if (voice) u.voice = voice;
     u.rate = 1.05;
     u.onstart = () => onSpeaking?.(true);
-    u.onend = u.onerror = () => onSpeaking?.(false);
-    synth.speak(u);
+    u.onend = u.onerror = () => {
+      if (currentUtterance === u) currentUtterance = null;
+      onSpeaking?.(false);
+    };
+    currentUtterance = u;
+    // Chrome drops an utterance queued in the same tick as cancel(), and can be left paused after
+    // speech recognition ends; a short delay and resume() avoid both.
+    setTimeout(() => {
+      if (currentUtterance !== u) return;
+      synth.resume();
+      synth.speak(u);
+    }, 60);
   } catch {
     /* no speech synthesis: the reply is still shown */
   }
@@ -108,6 +151,7 @@ function speak(text: string, onSpeaking?: (speaking: boolean) => void) {
 
 function stopSpeaking() {
   try {
+    currentUtterance = null;
     window.speechSynthesis?.cancel();
   } catch {
     /* ignore */
@@ -116,7 +160,8 @@ function stopSpeaking() {
 
 /* ---------- the panel ---------- */
 
-type Phase = "listening" | "working" | "done" | "confused" | "help";
+/** "reply": answered small talk; stays open so the conversation can carry on. */
+type Phase = "listening" | "working" | "done" | "confused" | "help" | "reply";
 
 interface Reply {
   text: string;
@@ -170,6 +215,8 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
   /** Set when the end of this listening round should be ignored (closed, error, example tapped). */
   const skipEnd = useRef(false);
   const closed = useRef(false);
+  /** Cloud engine: Gemini already understood the recording while transcribing it. */
+  const aiCommand = useRef<{ transcript: string; command?: VoiceCommand } | null>(null);
 
   const names = { projects: projects.map((p) => p.name), tags: tags.map((t) => t.tag) };
   const vocab = { projects: projects.map((p) => ({ id: p.id, name: p.name })), tags: names.tags };
@@ -185,8 +232,8 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
     [muted, onClose],
   );
 
-  async function addTask(spoken: string) {
-    const text = spokenToQuickAdd(spoken, names);
+  async function addTask(spoken: string, formatted = false) {
+    const text = formatted ? spoken.slice(0, 500) : spokenToQuickAdd(spoken, names);
     const parsed = parseQuickAdd(text, { timezone: user.timezone });
     if (!parsed.title) {
       return finish("confused", { text: "What should the task be called?" }, false);
@@ -242,7 +289,7 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
         router.push(cmd.path);
         return finish("done", { text: `Opening ${cmd.label}` }, true);
       case "addTask":
-        return addTask(cmd.text);
+        return addTask(cmd.text, cmd.formatted);
       case "newNote": {
         const res = await createNoteAction(cmd.title ? { title: cmd.title.slice(0, 200) } : {});
         if (!res.ok) return finish("confused", { text: res.error }, false);
@@ -292,6 +339,14 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
           },
           false,
         );
+      case "smallTalk": {
+        const text = smallTalkReply(cmd.topics, { name: user.name, timezone: user.timezone });
+        // Thanks and good night end the conversation; everything else invites the next request.
+        const bye = isGoodbye(cmd.topics);
+        return finish(bye ? "done" : "reply", { text }, bye);
+      }
+      case "reply":
+        return finish("reply", { text: cmd.text }, false);
       case "cancel":
         stopSpeaking();
         return onClose();
@@ -307,6 +362,20 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
     }
   }
 
+  /** Asks Gemini (when the server has a key). Null when it can't help, so the caller falls back. */
+  async function understand(
+    spoken: string,
+    preset: { transcript: string; command?: VoiceCommand } | null,
+  ): Promise<VoiceCommand | null> {
+    if (preset?.command && preset.transcript.trim() === spoken.trim()) return preset.command;
+    if (!isCloudSpeechEnabled() || !offline.online) return null;
+    try {
+      return (await cloudCommand({ text: spoken })).command ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async function handle(spoken: string) {
     if (!spoken.trim()) {
       return finish(
@@ -316,8 +385,14 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
       );
     }
     setPhase("working");
+    const preset = aiCommand.current;
+    aiCommand.current = null;
     try {
-      await run(parseVoiceCommand(spoken, vocab));
+      // The rules first: instant, free and offline. Gemini only for what they don't recognise.
+      let cmd = parseVoiceCommand(spoken, vocab);
+      if (cmd.type === "unknown") cmd = (await understand(spoken, preset)) ?? cmd;
+      if (closed.current) return;
+      await run(cmd);
     } catch {
       finish("confused", { text: "Something went wrong. Please try again." }, false);
     }
@@ -325,6 +400,12 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
 
   const speech = useSpeechInput({
     choose: (alternatives) => pickBestTranscript(alternatives, names),
+    // One round trip: Gemini transcribes the recording and understands the command together.
+    cloud: async (audio) => {
+      const result = await cloudCommand({ audio });
+      aiCommand.current = result;
+      return result.transcript;
+    },
     onText: (finalText, interim) => setHeard(`${finalText} ${interim}`.trim()),
     onEnd: (finalText) => {
       if (skipEnd.current || closed.current) return;
@@ -345,6 +426,7 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
     setReply(null);
     setPhase("listening");
     skipEnd.current = false;
+    aiCommand.current = null;
     speech.start();
   };
 
@@ -352,6 +434,7 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
     if (closeTimer.current) clearTimeout(closeTimer.current);
     skipEnd.current = true;
     speech.cancel();
+    aiCommand.current = null;
     setHeard(example);
     void handle(example);
   };
@@ -360,6 +443,10 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
   const { start: startListening } = speech;
   useEffect(() => {
     startListening();
+    // Get the Gemini connection ready while the user is still talking.
+    warmUpCloudSpeech();
+    // Chrome loads its voice list lazily; asking now means it's ready for the first reply.
+    window.speechSynthesis?.getVoices();
   }, [startListening]);
 
   useEffect(() => {
@@ -453,7 +540,7 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
           ? "Working on it…"
           : phase === "done"
             ? "Done"
-            : phase === "confused" || phase === "help"
+            : phase === "confused" || phase === "help" || phase === "reply"
               ? "Tap the orb to speak again"
               : "";
   const line = showResult && reply ? reply.text : heard ? `“${heard}”` : "";
@@ -516,12 +603,13 @@ function VoicePanel({ closing, onClose }: { closing: boolean; onClose: () => voi
         <p
           key={line}
           className={cn(
-            "voice-fade mt-4 line-clamp-3 min-h-6 text-base leading-snug font-medium",
+            "voice-fade mt-4 min-h-6 text-base leading-snug font-medium",
+            showResult && phase === "reply" ? "line-clamp-6" : "line-clamp-3",
             !line && "text-muted-strong",
           )}
           aria-live="polite"
         >
-          {line || (listening ? (speech.engine === "local" ? "Speak now…" : "Say a command…") : "")}
+          {line || (listening ? (speech.engine === "native" ? "Say a command…" : "Speak now…") : "")}
         </p>
         <p className="text-caption text-muted-strong mt-1 min-h-4">{caption}</p>
 
